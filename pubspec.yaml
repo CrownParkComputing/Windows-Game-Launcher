@@ -24,7 +24,7 @@ dependencies:
     git:
       url: https://github.com/google/flutter-desktop-embedding
       path: plugins/window_size
-  shared_preferences: ^2.5.2
+  shared_preferences: ^2.2.3
   file_picker_pro: ^1.5.0 # For file picking functionality
 
 dev_dependencies:
