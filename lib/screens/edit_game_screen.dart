@@ -391,7 +391,7 @@ class _EditGameScreenState extends State<EditGameScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                           ),
-                          child: Text('Save Changes'),
+                          child: const Text('Save Changes'),
                         ),
                       ],
                     ),

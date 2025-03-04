@@ -227,7 +227,7 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
             return const SizedBox.shrink();
           }
 
-          final textStyle = const TextStyle(
+          const textStyle = TextStyle(
             color: Colors.white,
             fontSize: 14,
           );

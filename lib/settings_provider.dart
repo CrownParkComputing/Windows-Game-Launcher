@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'models/game_config.dart';
-import 'dart:io';
 
 class SettingsProvider extends ChangeNotifier {
   static const String _gamesKey = 'games';
