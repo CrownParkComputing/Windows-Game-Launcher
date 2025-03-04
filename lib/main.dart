@@ -10,6 +10,8 @@ import 'utils/video_manager.dart';
 // Global navigator key for accessing context anywhere
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// Main entry point for the Windows Game Launcher application
+// Triggers automatic build and release process
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
