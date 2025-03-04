@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import '../utils/file_picker_utils.dart';
 import '../models/game_config.dart';
 import '../settings_provider.dart';
+import 'steam_import_screen.dart';
 
 class BatchGameSetupScreen extends StatefulWidget {
   const BatchGameSetupScreen({super.key});
