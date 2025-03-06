@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:media_kit/media_kit.dart';
@@ -6,34 +7,50 @@ import 'screens/game_launcher_home.dart';
 import 'screens/batch_game_setup_screen.dart';
 import 'utils/window_utils.dart';
 import 'utils/video_manager.dart';
+import 'pages/platform_select_page.dart';
+import 'screens/main_screen.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:window_manager/window_manager.dart';
+import 'widgets/custom_window_controls.dart';
 
 // Global navigator key for accessing context anywhere
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // Main entry point for the Windows Game Launcher application
-// Triggers automatic build and release process
-void main() async {
-  // Ensure Flutter is initialized
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  runZonedGuarded(() async {
+    // Ensure Flutter is initialized
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize MediaKit - fixed to avoid void expression error
-  MediaKit.ensureInitialized();
+    // Initialize window manager first
+    await windowManager.ensureInitialized();
+    await windowManager.setSize(const Size(1536, 864));
+    await windowManager.setMinimumSize(const Size(800, 600));
+    await windowManager.center();
+    await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+    await windowManager.show();
 
-  // Initialize our video manager
-  await VideoManager().initialize();
+    // Load settings - note that SettingsProvider constructor initializes settings automatically
+    final settingsProvider = SettingsProvider();
 
-  // Initialize window settings
-  WindowUtils.initializeWindow();
+    // Run the app first
+    runApp(
+      ChangeNotifierProvider.value(
+        value: settingsProvider,
+        child: const GameLauncherApp(),
+      ),
+    );
 
-  // Load settings - note that SettingsProvider constructor initializes settings automatically
-  final settingsProvider = SettingsProvider();
+    // Initialize media components after the app is running
+    await Future.delayed(const Duration(milliseconds: 100));
+    MediaKit.ensureInitialized();
+    await VideoManager().initialize();
 
-  runApp(
-    ChangeNotifierProvider.value(
-      value: settingsProvider,
-      child: const GameLauncherApp(),
-    ),
-  );
+  }, (error, stack) {
+    debugPrint('Error during initialization: $error');
+    debugPrint(stack.toString());
+  });
 }
 
 class GameLauncherApp extends StatefulWidget {
@@ -60,88 +77,76 @@ class _GameLauncherAppState extends State<GameLauncherApp> with WidgetsBindingOb
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Get the settings provider
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    
-    // Save all layout settings when the app is paused, inactive, or detached
-    if (state == AppLifecycleState.paused || 
-        state == AppLifecycleState.inactive || 
-        state == AppLifecycleState.detached) {
-      print("App lifecycle changed to $state - saving all layout settings");
-      
-      // Save all layout settings directly through the settings provider
-      settingsProvider.saveLayoutPreferences(
-        leftMarginWidth: settingsProvider.leftMarginWidth,
-        rightMarginWidth: settingsProvider.rightMarginWidth,
-        topMarginHeight: settingsProvider.topMarginHeight,
-        bottomMarginHeight: settingsProvider.bottomMarginHeight,
-        topLeftWidth: settingsProvider.topLeftWidth,
-        topCenterWidth: settingsProvider.topCenterWidth,
-        topRightWidth: settingsProvider.topRightWidth,
-        selectedLeftImage: settingsProvider.selectedLeftImage,
-        selectedRightImage: settingsProvider.selectedRightImage,
-        selectedTopImage: settingsProvider.selectedTopImage,
-        selectedTopLeftImage: settingsProvider.selectedTopLeftImage,
-        selectedTopCenterImage: settingsProvider.selectedTopCenterImage,
-        selectedTopRightImage: settingsProvider.selectedTopRightImage,
-        selectedBottomImage: settingsProvider.selectedBottomImage,
-        selectedMainImage: settingsProvider.selectedMainImage,
-        isCarouselMap: settingsProvider.isCarouselMap,
-        alignmentMap: settingsProvider.alignmentMap,
-        backgroundColorMap: settingsProvider.backgroundColorMap,
-        showTicker: settingsProvider.showTicker,
-        tickerAlignment: settingsProvider.tickerAlignment,
-        carouselItemCount: settingsProvider.carouselItemCount,
-      );
+    super.didChangeAppLifecycleState(state);
+    // Save layout settings when app is paused or inactive
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Get the settings provider
+      final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      // Save layout settings directly through the settings provider
+      settingsProvider.saveLayoutPreferences();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Game Launcher',
-      theme: ThemeData.dark(),
-      debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
-      home: Consumer<SettingsProvider>(
-        builder: (context, settingsProvider, child) {
-          return Builder(
-            builder: (context) {
-              // Check if any games are configured
-              if (!settingsProvider.hasConfiguredGames) {
-                // Use a microtask to ensure the dialog shows after the app is built
-                Future.microtask(() {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Welcome to Game Launcher'),
-                      content: const Text(
-                          'Let\'s set up your games collection to get started.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const BatchGameSetupScreen(),
-                              ),
-                            );
-                          },
-                          child: const Text('Setup Games'),
-                        ),
-                      ],
-                    ),
-                  );
-                });
-              }
-              return GameLauncherHome(settingsProvider: settingsProvider);
-            },
-          );
-        },
+      title: 'Game Launcher',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      debugShowCheckedModeBanner: false,
+      initialRoute: '/',
+      routes: {
+        '/': (context) => Consumer<SettingsProvider>(
+          builder: (context, settingsProvider, child) {
+            return Scaffold(
+              appBar: const CustomWindowAppBar(),
+              body: Builder(
+                builder: (context) {
+                  // Check if any games are configured
+                  if (!settingsProvider.hasConfiguredGames) {
+                    // Use a microtask to ensure the dialog shows after the app is built
+                    Future.microtask(() {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Welcome to Game Launcher'),
+                          content: const Text(
+                              'Let\'s set up your games collection to get started.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const BatchGameSetupScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Text('Setup Games'),
+                            ),
+                          ],
+                        ),
+                      );
+                    });
+                  }
+                  return const PlatformSelectPage();
+                },
+              ),
+            );
+          },
+        ),
+        '/main': (context) => Scaffold(
+          appBar: const CustomWindowAppBar(),
+          body: const MainScreen(),
+        ),
+      },
     );
   }
 }

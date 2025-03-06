@@ -20,12 +20,9 @@ dependencies:
   media_kit_libs_windows_video: ^1.0.10
   media_kit_native_event_loop: ^1.0.8  # Added to fix event loop warning
   provider: ^6.1.1
-  window_size:
-    git:
-      url: https://github.com/google/flutter-desktop-embedding
-      path: plugins/window_size
+  window_manager: ^0.3.7
   shared_preferences: ^2.2.3
-  file_picker_pro: ^1.5.0 # For file picking functionality
+  file_picker: ^6.1.1
 
 dev_dependencies:
   flutter_test:
