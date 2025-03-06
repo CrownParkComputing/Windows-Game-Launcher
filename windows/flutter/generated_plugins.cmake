@@ -3,14 +3,11 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  file_picker_pro
-  file_selector_windows
   media_kit_libs_windows_video
   media_kit_video
-  open_share_plus
   screen_brightness_windows
-  url_launcher_windows
-  window_size
+  screen_retriever
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

@@ -46,7 +46,8 @@ class SettingsProvider extends ChangeNotifier {
     'fanart',
     'video',
     'story',
-    'medium_disc'
+    'medium_disc',
+    'static_image'
   ];
 
   late SharedPreferences _prefs;
@@ -226,6 +227,83 @@ class SettingsProvider extends ChangeNotifier {
     return availableBackgroundColors[colorString] ?? Colors.black45;
   }
 
+  // Add a map to store static image paths
+  final Map<String, String> _staticImagePaths = {};
+  
+  // Add a map to store video aspect ratios
+  final Map<String, double> _videoAspectRatios = {};
+
+  // Method to set static image path
+  void setStaticImagePath(String sectionKey, String? imagePath) {
+    if (imagePath != null) {
+      _staticImagePaths[sectionKey] = imagePath;
+    } else {
+      _staticImagePaths.remove(sectionKey);
+    }
+    
+    // Save directly to SharedPreferences for immediate persistence
+    _saveStaticImagePathDirectly(sectionKey, imagePath);
+    
+    // Notify listeners
+    notifyListeners();
+  }
+  
+  // Save a static image path directly to SharedPreferences
+  Future<void> _saveStaticImagePathDirectly(String sectionKey, String? imagePath) async {
+    final key = 'static_image_path_$sectionKey';
+    if (imagePath != null) {
+      await _prefs.setString(key, imagePath);
+    } else {
+      await _prefs.remove(key);
+    }
+  }
+  
+  // Get a static image path for a specific section
+  String? getStaticImagePath(String sectionKey) {
+    final path = _staticImagePaths[sectionKey];
+    return path;
+  }
+  
+  // Set a video aspect ratio for a specific section
+  void setVideoAspectRatio(String sectionKey, double aspectRatio) {
+    _videoAspectRatios[sectionKey] = aspectRatio;
+    
+    // Save directly to SharedPreferences for immediate persistence
+    _saveVideoAspectRatioDirectly(sectionKey, aspectRatio);
+    
+    // Notify listeners
+    notifyListeners();
+  }
+  
+  // Save a video aspect ratio directly to SharedPreferences
+  Future<void> _saveVideoAspectRatioDirectly(String sectionKey, double aspectRatio) async {
+    final key = 'video_aspect_ratio_$sectionKey';
+    await _prefs.setDouble(key, aspectRatio);
+  }
+  
+  // Get a video aspect ratio for a specific section
+  double? getVideoAspectRatio(String sectionKey) {
+    final ratio = _videoAspectRatios[sectionKey];
+    return ratio;
+  }
+  
+  // Reset a video aspect ratio for a specific section
+  void resetVideoAspectRatio(String sectionKey) {
+    _videoAspectRatios.remove(sectionKey);
+    
+    // Remove directly from SharedPreferences for immediate persistence
+    _removeVideoAspectRatioDirectly(sectionKey);
+    
+    // Notify listeners
+    notifyListeners();
+  }
+  
+  // Remove a video aspect ratio directly from SharedPreferences
+  Future<void> _removeVideoAspectRatioDirectly(String sectionKey) async {
+    final key = 'video_aspect_ratio_$sectionKey';
+    await _prefs.remove(key);
+  }
+
   // Constructor
   SettingsProvider() {
     _initializeSettings();
@@ -240,6 +318,108 @@ class SettingsProvider extends ChangeNotifier {
     _gamesFolderPath = _prefs.getString(_gamesFolderPathKey);
     _mediaFolderPath = _prefs.getString(_mediaFolderPathKey);
     
+    // Load static image paths directly from individual keys
+    final List<String> sectionKeys = ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right'];
+    for (var key in sectionKeys) {
+      // Try direct key first
+      String? directPath = _prefs.getString('static_image_direct_$key');
+      
+      // If not found, try older key formats for backward compatibility
+      if (directPath == null || directPath.isEmpty) {
+        directPath = _prefs.getString('static_image_$key');
+      }
+      if (directPath == null || directPath.isEmpty) {
+        directPath = _prefs.getString('static_image_path_$key');
+      }
+      
+      if (directPath != null && directPath.isNotEmpty) {
+        _staticImagePaths[key] = directPath;
+        
+        // Also save with the new direct key format to ensure future compatibility
+        _prefs.setString('static_image_direct_$key', directPath);
+        
+        // Set the media type to 'static_image' if a static image path exists
+        switch (key) {
+          case 'left':
+            _selectedLeftImage = 'static_image';
+            break;
+          case 'right':
+            _selectedRightImage = 'static_image';
+            break;
+          case 'top':
+            _selectedTopImage = 'static_image';
+            break;
+          case 'top_left':
+            _selectedTopLeftImage = 'static_image';
+            break;
+          case 'top_center':
+            _selectedTopCenterImage = 'static_image';
+            break;
+          case 'top_right':
+            _selectedTopRightImage = 'static_image';
+            break;
+          case 'bottom':
+            _selectedBottomImage = 'static_image';
+            break;
+          case 'main':
+            _selectedMainImage = 'static_image';
+            break;
+        }
+      }
+    }
+    
+    // Also try to load from the map format for backward compatibility
+    final String? staticImagePathsJson = _prefs.getString('staticImagePaths');
+    if (staticImagePathsJson != null) {
+      try {
+        final Map<String, dynamic> decoded = json.decode(staticImagePathsJson);
+        decoded.forEach((key, value) {
+          if (_staticImagePaths[key] == null || _staticImagePaths[key]!.isEmpty) {
+            _staticImagePaths[key] = value as String;
+            // Also save with the new direct key format
+            if (value.isNotEmpty) {
+              _prefs.setString('static_image_direct_$key', value);
+            }
+          }
+        });
+      } catch (e) {
+        // Error handling
+      }
+    }
+    
+    // Load video aspect ratios directly from individual keys
+    for (var key in sectionKeys) {
+      // Try direct key first
+      double? directRatio = _prefs.getDouble('video_aspect_ratio_direct_$key');
+      
+      // If not found, try older key format for backward compatibility
+      directRatio ??= _prefs.getDouble('video_aspect_ratio_$key');
+      
+      if (directRatio != null) {
+        _videoAspectRatios[key] = directRatio;
+        
+        // Also save with the new direct key format to ensure future compatibility
+        _prefs.setDouble('video_aspect_ratio_direct_$key', directRatio);
+      }
+    }
+    
+    // Also try to load from the map format for backward compatibility
+    final String? videoAspectRatiosJson = _prefs.getString('videoAspectRatios');
+    if (videoAspectRatiosJson != null) {
+      try {
+        final Map<String, dynamic> decoded = json.decode(videoAspectRatiosJson);
+        decoded.forEach((key, value) {
+          if (_videoAspectRatios[key] == null) {
+            _videoAspectRatios[key] = double.parse(value.toString());
+            // Also save with the new direct key format
+            _prefs.setDouble('video_aspect_ratio_direct_$key', double.parse(value.toString()));
+          }
+        });
+      } catch (e) {
+        // Error handling
+      }
+    }
+    
     // Load margin dimensions
     _leftMarginWidth = _prefs.getDouble(_leftMarginWidthKey) ?? 200;
     _rightMarginWidth = _prefs.getDouble(_rightMarginWidthKey) ?? 200;
@@ -250,9 +430,6 @@ class SettingsProvider extends ChangeNotifier {
     _topLeftWidth = _prefs.getDouble(_topLeftWidthKey) ?? 200;
     _topCenterWidth = _prefs.getDouble(_topCenterWidthKey) ?? 200;
     _topRightWidth = _prefs.getDouble(_topRightWidthKey) ?? 200;
-    _selectedTopLeftImage = _prefs.getString(_selectedTopLeftImageKey) ?? 'logo';
-    _selectedTopCenterImage = _prefs.getString(_selectedTopCenterImageKey) ?? 'logo';
-    _selectedTopRightImage = _prefs.getString(_selectedTopRightImageKey) ?? 'logo';
     
     // Load selected images
     _selectedLeftImage = _prefs.getString(_selectedLeftImageKey) ?? 'logo';
@@ -321,6 +498,17 @@ class SettingsProvider extends ChangeNotifier {
         if (game.videoPath.isNotEmpty) _gameVideoPaths[game.name] = game.videoPath;
         if (game.bannerPath.isNotEmpty) _gameBannerPaths[game.name] = game.bannerPath;
       }
+    }
+
+    // Load selected images if not already set by static images
+    if (_selectedTopLeftImage.isEmpty) {
+      _selectedTopLeftImage = _prefs.getString(_selectedTopLeftImageKey) ?? 'logo';
+    }
+    if (_selectedTopCenterImage.isEmpty) {
+      _selectedTopCenterImage = _prefs.getString(_selectedTopCenterImageKey) ?? 'logo';
+    }
+    if (_selectedTopRightImage.isEmpty) {
+      _selectedTopRightImage = _prefs.getString(_selectedTopRightImageKey) ?? 'logo';
     }
 
     notifyListeners();
@@ -797,6 +985,9 @@ class SettingsProvider extends ChangeNotifier {
       };
       await _prefs.setString(_carouselItemCountKey, json.encode(_carouselItemCount));
     }
+
+    // Note: Static image paths and video aspect ratios are now loaded directly in _initializeSettings
+    // to ensure they're available as early as possible
   }
 
   // Save maps to SharedPreferences
@@ -809,6 +1000,12 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setString(_showTickerKey, json.encode(_showTicker));
     await _prefs.setString(_tickerAlignmentKey, json.encode(_tickerAlignment));
     await _prefs.setString(_tickerSpeedKey, json.encode(_tickerSpeed));
+    
+    // Save static image paths
+    await _prefs.setString('staticImagePaths', json.encode(_staticImagePaths));
+    
+    // Save video aspect ratios
+    await _prefs.setString('videoAspectRatios', json.encode(_videoAspectRatios));
     
     // Make sure we save carousel item count
     await _prefs.setString(_carouselItemCountKey, json.encode(_carouselItemCount));
@@ -859,8 +1056,8 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setString(_selectedTopLeftImageKey, _selectedTopLeftImage);
     await _prefs.setString(_selectedTopCenterImageKey, _selectedTopCenterImage);
     await _prefs.setString(_selectedTopRightImageKey, _selectedTopRightImage);
-
-    // Save maps
+    
+    // Make sure to save all maps including static image paths and video aspect ratios
     await _saveMaps();
   }
 
@@ -879,9 +1076,27 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Force save all static image paths directly to SharedPreferences
+  Future<void> forceSaveStaticImagePaths() async {
+    for (var entry in _staticImagePaths.entries) {
+      if (entry.value.isNotEmpty) {
+        await _prefs.setString('static_image_direct_${entry.key}', entry.value);
+      }
+    }
+  }
+
+  // Force save all video aspect ratios directly to SharedPreferences
+  Future<void> forceSaveVideoAspectRatios() async {
+    for (var entry in _videoAspectRatios.entries) {
+      await _prefs.setDouble('video_aspect_ratio_direct_${entry.key}', entry.value);
+    }
+  }
+
   // Force an immediate save of all settings to SharedPreferences
   Future<void> forceSave() async {
     await _saveData();
+    await forceSaveStaticImagePaths();
+    await forceSaveVideoAspectRatios();
   }
 }
 

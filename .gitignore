@@ -31,7 +31,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+build/
 
 # Symbolication related
 app.*.symbols
@@ -82,3 +82,25 @@ build/
 # Logs
 *.log
 logs/
+
+# Platform specific
+android/
+ios/
+linux/
+macos/
+web/
+
+# Build files
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE files
+.idea/
+.vscode/
+
+# Generated files
+*.lock
+.metadata
+nul
