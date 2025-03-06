@@ -9,6 +9,9 @@ class LayoutManager {
   double rightMarginWidth;
   double topMarginHeight;
   double bottomMarginHeight;
+  double topLeftWidth;
+  double topCenterWidth;
+  double topRightWidth;
 
   // Throttle values to reduce updates
   int _lastUpdateTime = 0;
@@ -18,6 +21,9 @@ class LayoutManager {
   String selectedLeftImage;
   String selectedRightImage;
   String selectedTopImage;
+  String selectedTopLeftImage;
+  String selectedTopCenterImage;
+  String selectedTopRightImage;
   String selectedBottomImage;
   String selectedMainImage;
 
@@ -26,6 +32,9 @@ class LayoutManager {
         rightMarginWidth = settingsProvider.rightMarginWidth,
         topMarginHeight = settingsProvider.topMarginHeight,
         bottomMarginHeight = settingsProvider.bottomMarginHeight,
+        topLeftWidth = settingsProvider.topLeftWidth,
+        topCenterWidth = settingsProvider.topCenterWidth,
+        topRightWidth = settingsProvider.topRightWidth,
         selectedLeftImage = settingsProvider.selectedLeftImage.isEmpty
             ? 'banner'
             : settingsProvider.selectedLeftImage,
@@ -35,6 +44,15 @@ class LayoutManager {
         selectedTopImage = settingsProvider.selectedTopImage.isEmpty
             ? 'banner'
             : settingsProvider.selectedTopImage,
+        selectedTopLeftImage = settingsProvider.selectedTopLeftImage.isEmpty
+            ? 'banner'
+            : settingsProvider.selectedTopLeftImage,
+        selectedTopCenterImage = settingsProvider.selectedTopCenterImage.isEmpty
+            ? 'banner'
+            : settingsProvider.selectedTopCenterImage,
+        selectedTopRightImage = settingsProvider.selectedTopRightImage.isEmpty
+            ? 'banner'
+            : settingsProvider.selectedTopRightImage,
         selectedBottomImage = settingsProvider.selectedBottomImage.isEmpty
             ? 'banner'
             : settingsProvider.selectedBottomImage,
@@ -62,7 +80,9 @@ class LayoutManager {
     }
 
     topMarginHeight = newHeight;
-    settingsProvider.notifyListeners(); // Notify listeners of the change
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
   }
 
   // Adjust bottom margin height with limits
@@ -75,31 +95,78 @@ class LayoutManager {
     }
 
     bottomMarginHeight = newHeight;
-    settingsProvider.notifyListeners(); // Notify listeners of the change
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
   }
 
   // Adjust left margin width with limits
   void adjustLeftMargin(double delta, double maxWidth) {
     if (!_shouldUpdate()) return; // Throttle updates for smoother performance
 
-    double newWidth = (leftMarginWidth + delta).clamp(100.0, maxWidth);
-    if ((newWidth - leftMarginWidth).abs() < 1.0) return; // Ignore tiny changes
+    double newWidth = (leftMarginWidth + delta).clamp(50.0, maxWidth);
+    if ((newWidth - leftMarginWidth).abs() < 1.0) {
+      return; // Ignore tiny changes
+    }
 
     leftMarginWidth = newWidth;
-    settingsProvider.notifyListeners(); // Notify listeners of the change
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
   }
 
   // Adjust right margin width with limits
   void adjustRightMargin(double delta, double maxWidth) {
     if (!_shouldUpdate()) return; // Throttle updates for smoother performance
 
-    double newWidth = (rightMarginWidth + delta).clamp(100.0, maxWidth);
+    double newWidth = (rightMarginWidth + delta).clamp(50.0, maxWidth);
     if ((newWidth - rightMarginWidth).abs() < 1.0) {
       return; // Ignore tiny changes
     }
 
     rightMarginWidth = newWidth;
-    settingsProvider.notifyListeners(); // Notify listeners of the change
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
+  }
+
+  // Adjust top left width with limits
+  void adjustTopLeftWidth(double delta, double maxWidth) {
+    if (!_shouldUpdate()) return; // Throttle updates for smoother performance
+
+    double newWidth = (topLeftWidth + delta).clamp(50.0, maxWidth);
+    if ((newWidth - topLeftWidth).abs() < 1.0) return;
+
+    topLeftWidth = newWidth;
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
+  }
+
+  // Adjust top center width with limits
+  void adjustTopCenterWidth(double delta, double maxWidth) {
+    if (!_shouldUpdate()) return; // Throttle updates for smoother performance
+
+    double newWidth = (topCenterWidth + delta).clamp(50.0, maxWidth);
+    if ((newWidth - topCenterWidth).abs() < 1.0) return;
+
+    topCenterWidth = newWidth;
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
+  }
+
+  // Adjust top right width with limits
+  void adjustTopRightWidth(double delta, double maxWidth) {
+    if (!_shouldUpdate()) return; // Throttle updates for smoother performance
+
+    double newWidth = (topRightWidth + delta).clamp(50.0, maxWidth);
+    if ((newWidth - topRightWidth).abs() < 1.0) return;
+
+    topRightWidth = newWidth;
+    
+    // Only notify listeners, don't save during drag
+    settingsProvider.notifyListeners();
   }
 
   // Set alignment for a specific section
@@ -108,7 +175,9 @@ class LayoutManager {
         Map.from(settingsProvider.alignmentMap);
     updatedAlignmentMap[sectionKey] = SettingsProvider.getAlignmentFromString(alignment);
 
-    saveLayoutPreferences(alignmentMap: updatedAlignmentMap);
+    // Just update the map in memory, save will happen when exiting edit mode
+    settingsProvider.alignmentMap = updatedAlignmentMap;
+    settingsProvider.notifyListeners();
   }
 
   // Set background color for a specific section
@@ -117,7 +186,9 @@ class LayoutManager {
         Map.from(settingsProvider.backgroundColorMap);
     updatedBackgroundColorMap[sectionKey] = SettingsProvider.getColorFromString(colorKey);
 
-    saveLayoutPreferences(backgroundColorMap: updatedBackgroundColorMap);
+    // Just update the map in memory, save will happen when exiting edit mode
+    settingsProvider.backgroundColorMap = updatedBackgroundColorMap;
+    settingsProvider.notifyListeners();
   }
 
   // Toggle carousel mode for a specific section
@@ -127,7 +198,9 @@ class LayoutManager {
     updatedCarouselMap[sectionKey] =
         !(settingsProvider.isCarouselMap[sectionKey] ?? true);
 
-    saveLayoutPreferences(isCarouselMap: updatedCarouselMap);
+    // Just update the map in memory, save will happen when exiting edit mode
+    settingsProvider.isCarouselMap = updatedCarouselMap;
+    settingsProvider.notifyListeners();
   }
 
   // Update media type for a specific section
@@ -142,6 +215,15 @@ class LayoutManager {
       case 'top':
         selectedTopImage = mediaType;
         break;
+      case 'top_left':
+        selectedTopLeftImage = mediaType;
+        break;
+      case 'top_center':
+        selectedTopCenterImage = mediaType;
+        break;
+      case 'top_right':
+        selectedTopRightImage = mediaType;
+        break;
       case 'bottom':
         selectedBottomImage = mediaType;
         break;
@@ -150,18 +232,7 @@ class LayoutManager {
         break;
     }
 
-    // Save changes immediately and notify listeners
-    settingsProvider.saveLayoutPreferences(
-      leftMarginWidth: leftMarginWidth,
-      rightMarginWidth: rightMarginWidth,
-      topMarginHeight: topMarginHeight,
-      bottomMarginHeight: bottomMarginHeight,
-      selectedLeftImage: selectedLeftImage,
-      selectedRightImage: selectedRightImage,
-      selectedTopImage: selectedTopImage,
-      selectedBottomImage: selectedBottomImage,
-      selectedMainImage: selectedMainImage,
-    );
+    // Notify listeners (save will happen when exiting edit mode)
     settingsProvider.notifyListeners();
   }
 
@@ -171,9 +242,15 @@ class LayoutManager {
     double? rightMarginWidth,
     double? bottomMarginHeight,
     double? topMarginHeight,
+    double? topLeftWidth,
+    double? topCenterWidth,
+    double? topRightWidth,
     String? selectedLeftImage,
     String? selectedRightImage,
     String? selectedTopImage,
+    String? selectedTopLeftImage,
+    String? selectedTopCenterImage,
+    String? selectedTopRightImage,
     String? selectedBottomImage,
     String? selectedMainImage,
     Map<String, bool>? isCarouselMap,
@@ -181,15 +258,22 @@ class LayoutManager {
     Map<String, Color>? backgroundColorMap,
     Map<String, bool>? showTicker,
     Map<String, String>? tickerAlignment,
+    Map<String, int>? carouselItemCount,
   }) {
     settingsProvider.saveLayoutPreferences(
       leftMarginWidth: leftMarginWidth,
       rightMarginWidth: rightMarginWidth,
       bottomMarginHeight: bottomMarginHeight,
       topMarginHeight: topMarginHeight,
+      topLeftWidth: topLeftWidth,
+      topCenterWidth: topCenterWidth,
+      topRightWidth: topRightWidth,
       selectedLeftImage: selectedLeftImage,
       selectedRightImage: selectedRightImage,
       selectedTopImage: selectedTopImage,
+      selectedTopLeftImage: selectedTopLeftImage,
+      selectedTopCenterImage: selectedTopCenterImage,
+      selectedTopRightImage: selectedTopRightImage,
       selectedBottomImage: selectedBottomImage,
       selectedMainImage: selectedMainImage,
       isCarouselMap: isCarouselMap,
@@ -197,6 +281,48 @@ class LayoutManager {
       backgroundColorMap: backgroundColorMap,
       showTicker: showTicker,
       tickerAlignment: tickerAlignment,
+      carouselItemCount: carouselItemCount,
     );
+  }
+
+  // Save all layout settings at once with robust persistence
+  void saveAllLayoutSettings() {
+    print("Saving all layout settings to persistent storage");
+    
+    // Ensure we have the latest data from settings provider where needed
+    final currentIsCarouselMap = settingsProvider.isCarouselMap;
+    final currentAlignmentMap = settingsProvider.alignmentMap;
+    final currentBackgroundColorMap = settingsProvider.backgroundColorMap;
+    final currentShowTicker = settingsProvider.showTicker;
+    final currentTickerAlignment = settingsProvider.tickerAlignment;
+    final currentCarouselItemCount = settingsProvider.carouselItemCount;
+    
+    // Call the saveLayoutPreferences method with all current settings
+    settingsProvider.saveLayoutPreferences(
+      leftMarginWidth: leftMarginWidth,
+      rightMarginWidth: rightMarginWidth,
+      topMarginHeight: topMarginHeight,
+      bottomMarginHeight: bottomMarginHeight,
+      topLeftWidth: topLeftWidth,
+      topCenterWidth: topCenterWidth,
+      topRightWidth: topRightWidth,
+      selectedLeftImage: selectedLeftImage,
+      selectedRightImage: selectedRightImage,
+      selectedTopImage: selectedTopImage,
+      selectedTopLeftImage: selectedTopLeftImage,
+      selectedTopCenterImage: selectedTopCenterImage,
+      selectedTopRightImage: selectedTopRightImage,
+      selectedBottomImage: selectedBottomImage,
+      selectedMainImage: selectedMainImage,
+      isCarouselMap: currentIsCarouselMap,
+      alignmentMap: currentAlignmentMap,
+      backgroundColorMap: currentBackgroundColorMap,
+      showTicker: currentShowTicker,
+      tickerAlignment: currentTickerAlignment,
+      carouselItemCount: currentCarouselItemCount,
+    );
+    
+    // Force an immediate save to SharedPreferences
+    settingsProvider.forceSave();
   }
 }

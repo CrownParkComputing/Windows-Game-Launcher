@@ -36,8 +36,65 @@ void main() async {
   );
 }
 
-class GameLauncherApp extends StatelessWidget {
+class GameLauncherApp extends StatefulWidget {
   const GameLauncherApp({super.key});
+
+  @override
+  State<GameLauncherApp> createState() => _GameLauncherAppState();
+}
+
+class _GameLauncherAppState extends State<GameLauncherApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    // Register this object as an observer for app lifecycle changes
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    // Remove the observer when the widget is disposed
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Get the settings provider
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    
+    // Save all layout settings when the app is paused, inactive, or detached
+    if (state == AppLifecycleState.paused || 
+        state == AppLifecycleState.inactive || 
+        state == AppLifecycleState.detached) {
+      print("App lifecycle changed to $state - saving all layout settings");
+      
+      // Save all layout settings directly through the settings provider
+      settingsProvider.saveLayoutPreferences(
+        leftMarginWidth: settingsProvider.leftMarginWidth,
+        rightMarginWidth: settingsProvider.rightMarginWidth,
+        topMarginHeight: settingsProvider.topMarginHeight,
+        bottomMarginHeight: settingsProvider.bottomMarginHeight,
+        topLeftWidth: settingsProvider.topLeftWidth,
+        topCenterWidth: settingsProvider.topCenterWidth,
+        topRightWidth: settingsProvider.topRightWidth,
+        selectedLeftImage: settingsProvider.selectedLeftImage,
+        selectedRightImage: settingsProvider.selectedRightImage,
+        selectedTopImage: settingsProvider.selectedTopImage,
+        selectedTopLeftImage: settingsProvider.selectedTopLeftImage,
+        selectedTopCenterImage: settingsProvider.selectedTopCenterImage,
+        selectedTopRightImage: settingsProvider.selectedTopRightImage,
+        selectedBottomImage: settingsProvider.selectedBottomImage,
+        selectedMainImage: settingsProvider.selectedMainImage,
+        isCarouselMap: settingsProvider.isCarouselMap,
+        alignmentMap: settingsProvider.alignmentMap,
+        backgroundColorMap: settingsProvider.backgroundColorMap,
+        showTicker: settingsProvider.showTicker,
+        tickerAlignment: settingsProvider.tickerAlignment,
+        carouselItemCount: settingsProvider.carouselItemCount,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

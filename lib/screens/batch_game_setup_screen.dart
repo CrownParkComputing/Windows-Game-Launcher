@@ -480,6 +480,12 @@ class _BatchGameSetupScreenState extends State<BatchGameSetupScreen> {
     final hasVideo = item.videoPath.isNotEmpty && File(item.videoPath).existsSync();
     final hasStory = item.storyText.isNotEmpty;
 
+    // Check for all artwork types
+    final hasArtwork3d = File('$_parentPath/${SettingsProvider.mediaRootFolder}/artwork_3d/${item.gameName}.png').existsSync();
+    final hasArtworkFront = File('$_parentPath/${SettingsProvider.mediaRootFolder}/artwork_front/${item.gameName}.png').existsSync();
+    final hasFanart = File('$_parentPath/${SettingsProvider.mediaRootFolder}/fanart/${item.gameName}.jpg').existsSync();
+    final hasMediumDisc = File('$_parentPath/${SettingsProvider.mediaRootFolder}/medium_disc/${item.gameName}.png').existsSync();
+
     // Determine if the logo is a logo.png file (preferred) or boxart
     final isLogoFile = hasLogo &&
         (path.basename(item.logoPath).toLowerCase() == 'logo.png' ||
@@ -674,8 +680,64 @@ class _BatchGameSetupScreenState extends State<BatchGameSetupScreen> {
                 }
               },
             ),
+            const SizedBox(height: 16),
+            // Add a new section for artwork availability
+            const Text(
+              'Artwork Availability:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                _buildArtworkIndicator('Logo', hasLogo, isLogoFile ? Colors.blue : Colors.green),
+                _buildArtworkIndicator('Video', hasVideo, Colors.green),
+                _buildArtworkIndicator('Story', hasStory, Colors.green),
+                _buildArtworkIndicator('3D Box', hasArtwork3d, Colors.green),
+                _buildArtworkIndicator('Front Box', hasArtworkFront, Colors.green),
+                _buildArtworkIndicator('Fanart', hasFanart, Colors.green),
+                _buildArtworkIndicator('Disc', hasMediumDisc, Colors.green),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Helper method to build artwork indicator
+  Widget _buildArtworkIndicator(String label, bool isAvailable, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isAvailable ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isAvailable ? color : Colors.grey,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isAvailable ? Icons.check_circle : Icons.cancel,
+            color: isAvailable ? color : Colors.grey,
+            size: 16,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isAvailable ? color.withOpacity(0.8) : Colors.grey,
+              fontWeight: isAvailable ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
     );
   }

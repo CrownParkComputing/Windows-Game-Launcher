@@ -20,6 +20,13 @@ class SettingsProvider extends ChangeNotifier {
   static const String _showTickerKey = 'showTicker';
   static const String _tickerAlignmentKey = 'tickerAlignment';
   static const String _tickerSpeedKey = 'tickerSpeed';
+  static const String _topLeftWidthKey = 'topLeftWidth';
+  static const String _topCenterWidthKey = 'topCenterWidth';
+  static const String _topRightWidthKey = 'topRightWidth';
+  static const String _selectedTopLeftImageKey = 'selectedTopLeftImage';
+  static const String _selectedTopCenterImageKey = 'selectedTopCenterImage';
+  static const String _selectedTopRightImageKey = 'selectedTopRightImage';
+  static const String _carouselItemCountKey = 'carouselItemCount';
 
   // Media subfolder paths relative to parent folder
   static const String mediaRootFolder = 'medium_artwork';
@@ -73,6 +80,14 @@ class SettingsProvider extends ChangeNotifier {
   String _selectedTopImage = 'logo';
   String _selectedMainImage = 'video';
 
+  // Top section dimensions and media types
+  double _topLeftWidth = 200;
+  double _topCenterWidth = 200;
+  double _topRightWidth = 200;
+  String _selectedTopLeftImage = 'logo';
+  String _selectedTopCenterImage = 'logo';
+  String _selectedTopRightImage = 'logo';
+
   // Carousel mode preferences (defaults to carousel)
   Map<String, bool> _isCarouselMap = {
     'left': true,
@@ -115,6 +130,7 @@ class SettingsProvider extends ChangeNotifier {
   Map<String, bool> _showTicker = {};
   Map<String, String> _tickerAlignment = {};
   Map<String, double> _tickerSpeed = {};
+  Map<String, int> _carouselItemCount = {};
 
   // Story text markers
   static const String storyStartMarker = "[STORY_START]";
@@ -155,17 +171,55 @@ class SettingsProvider extends ChangeNotifier {
   String get selectedTopImage => _selectedTopImage;
   String get selectedMainImage => _selectedMainImage;
   Map<String, bool> get isCarouselMap => _isCarouselMap;
+  set isCarouselMap(Map<String, bool> value) {
+    _isCarouselMap = value;
+    _saveData();
+  }
+  
   Map<String, Alignment> get alignmentMap => _alignmentMap;
+  set alignmentMap(Map<String, Alignment> value) {
+    _alignmentMap = value;
+    _saveData();
+  }
+  
   Map<String, Color> get backgroundColorMap => _backgroundColorMap;
+  set backgroundColorMap(Map<String, Color> value) {
+    _backgroundColorMap = value;
+    _saveData();
+  }
 
   // Getters for ticker settings
-  Map<String, bool> get showTicker => Map.unmodifiable(_showTicker);
-  Map<String, String> get tickerAlignment => Map.unmodifiable(_tickerAlignment);
-  Map<String, double> get tickerSpeed => Map.unmodifiable(_tickerSpeed);
+  Map<String, bool> get showTicker => Map<String, bool>.from(_showTicker);
+  set showTicker(Map<String, bool> value) {
+    _showTicker = value;
+    _saveData();
+  }
+  
+  Map<String, String> get tickerAlignment => Map<String, String>.from(_tickerAlignment);
+  set tickerAlignment(Map<String, String> value) {
+    _tickerAlignment = value;
+    _saveData();
+  }
+  
+  Map<String, double> get tickerSpeed => Map<String, double>.from(_tickerSpeed);
+  Map<String, int> get carouselItemCount => Map<String, int>.from(_carouselItemCount);
+  set carouselItemCount(Map<String, int> value) {
+    _carouselItemCount = value;
+    _saveData();
+  }
 
   // Default ticker settings
   static const defaultTickerSpeed = 50.0;
   static const List<String> validTickerAlignments = ['top', 'bottom'];
+  static const int defaultCarouselItemCount = 3;
+
+  // Getters for top section settings
+  double get topLeftWidth => _topLeftWidth;
+  double get topCenterWidth => _topCenterWidth;
+  double get topRightWidth => _topRightWidth;
+  String get selectedTopLeftImage => _selectedTopLeftImage;
+  String get selectedTopCenterImage => _selectedTopCenterImage;
+  String get selectedTopRightImage => _selectedTopRightImage;
 
   // Convert color string to Color object
   static Color getColorFromString(String colorString) {
@@ -191,6 +245,14 @@ class SettingsProvider extends ChangeNotifier {
     _rightMarginWidth = _prefs.getDouble(_rightMarginWidthKey) ?? 200;
     _bottomMarginHeight = _prefs.getDouble(_bottomMarginHeightKey) ?? 120;
     _topMarginHeight = _prefs.getDouble(_topMarginHeightKey) ?? 120;
+    
+    // Load top section dimensions and media types
+    _topLeftWidth = _prefs.getDouble(_topLeftWidthKey) ?? 200;
+    _topCenterWidth = _prefs.getDouble(_topCenterWidthKey) ?? 200;
+    _topRightWidth = _prefs.getDouble(_topRightWidthKey) ?? 200;
+    _selectedTopLeftImage = _prefs.getString(_selectedTopLeftImageKey) ?? 'logo';
+    _selectedTopCenterImage = _prefs.getString(_selectedTopCenterImageKey) ?? 'logo';
+    _selectedTopRightImage = _prefs.getString(_selectedTopRightImageKey) ?? 'logo';
     
     // Load selected images
     _selectedLeftImage = _prefs.getString(_selectedLeftImageKey) ?? 'logo';
@@ -293,9 +355,15 @@ class SettingsProvider extends ChangeNotifier {
     double? rightMarginWidth,
     double? bottomMarginHeight,
     double? topMarginHeight,
+    double? topLeftWidth,
+    double? topCenterWidth,
+    double? topRightWidth,
     String? selectedLeftImage,
     String? selectedRightImage,
     String? selectedTopImage,
+    String? selectedTopLeftImage,
+    String? selectedTopCenterImage,
+    String? selectedTopRightImage,
     String? selectedBottomImage,
     String? selectedMainImage,
     Map<String, bool>? isCarouselMap,
@@ -303,6 +371,7 @@ class SettingsProvider extends ChangeNotifier {
     Map<String, Color>? backgroundColorMap,
     Map<String, bool>? showTicker,
     Map<String, String>? tickerAlignment,
+    Map<String, int>? carouselItemCount,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -311,11 +380,17 @@ class SettingsProvider extends ChangeNotifier {
     if (rightMarginWidth != null) _rightMarginWidth = rightMarginWidth;
     if (bottomMarginHeight != null) _bottomMarginHeight = bottomMarginHeight;
     if (topMarginHeight != null) _topMarginHeight = topMarginHeight;
+    if (topLeftWidth != null) _topLeftWidth = topLeftWidth;
+    if (topCenterWidth != null) _topCenterWidth = topCenterWidth;
+    if (topRightWidth != null) _topRightWidth = topRightWidth;
     
     // Update media type selections only if provided
     if (selectedLeftImage != null) _selectedLeftImage = selectedLeftImage;
     if (selectedRightImage != null) _selectedRightImage = selectedRightImage;
     if (selectedTopImage != null) _selectedTopImage = selectedTopImage;
+    if (selectedTopLeftImage != null) _selectedTopLeftImage = selectedTopLeftImage;
+    if (selectedTopCenterImage != null) _selectedTopCenterImage = selectedTopCenterImage;
+    if (selectedTopRightImage != null) _selectedTopRightImage = selectedTopRightImage;
     if (selectedBottomImage != null) _selectedBottomImage = selectedBottomImage;
     if (selectedMainImage != null) _selectedMainImage = selectedMainImage;
 
@@ -335,6 +410,9 @@ class SettingsProvider extends ChangeNotifier {
     if (tickerAlignment != null) {
       _tickerAlignment = Map<String, String>.from(tickerAlignment);
     }
+    if (carouselItemCount != null) {
+      _carouselItemCount = Map<String, int>.from(carouselItemCount);
+    }
 
     // Save all values to SharedPreferences
     await prefs.setDouble('leftMarginWidth', _leftMarginWidth);
@@ -342,9 +420,17 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setDouble('bottomMarginHeight', _bottomMarginHeight);
     await prefs.setDouble('topMarginHeight', _topMarginHeight);
     
+    // Save top section dimensions
+    await prefs.setDouble(_topLeftWidthKey, _topLeftWidth);
+    await prefs.setDouble(_topCenterWidthKey, _topCenterWidth);
+    await prefs.setDouble(_topRightWidthKey, _topRightWidth);
+    
     await prefs.setString('selectedLeftImage', _selectedLeftImage);
     await prefs.setString('selectedRightImage', _selectedRightImage);
     await prefs.setString('selectedTopImage', _selectedTopImage);
+    await prefs.setString('selectedTopLeftImage', _selectedTopLeftImage);
+    await prefs.setString('selectedTopCenterImage', _selectedTopCenterImage);
+    await prefs.setString('selectedTopRightImage', _selectedTopRightImage);
     await prefs.setString('selectedBottomImage', _selectedBottomImage);
     await prefs.setString('selectedMainImage', _selectedMainImage);
 
@@ -354,6 +440,12 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setString('backgroundColorMap', jsonEncode(_backgroundColorMap.map((key, value) => MapEntry(key, value.value))));
     await prefs.setString('showTicker', jsonEncode(_showTicker));
     await prefs.setString('tickerAlignment', jsonEncode(_tickerAlignment));
+
+    // Save carousel item count
+    await prefs.setString(_carouselItemCountKey, json.encode(_carouselItemCount));
+    
+    // Also call _saveData to ensure everything is saved
+    await _saveData();
 
     notifyListeners();
   }
@@ -687,6 +779,24 @@ class SettingsProvider extends ChangeNotifier {
       final Map<String, dynamic> decoded = json.decode(tickerSpeedJson);
       _tickerSpeed = decoded.map((key, value) => MapEntry(key, (value as num).toDouble()));
     }
+
+    final String? carouselItemCountJson = _prefs.getString(_carouselItemCountKey);
+    if (carouselItemCountJson != null) {
+      final Map<String, dynamic> data = json.decode(carouselItemCountJson);
+      _carouselItemCount = data.map((key, value) => MapEntry(key, value as int));
+    } else {
+      _carouselItemCount = {
+        'left': defaultCarouselItemCount,
+        'right': defaultCarouselItemCount,
+        'top': defaultCarouselItemCount,
+        'top_left': defaultCarouselItemCount,
+        'top_center': defaultCarouselItemCount,
+        'top_right': defaultCarouselItemCount,
+        'bottom': defaultCarouselItemCount,
+        'main': defaultCarouselItemCount,
+      };
+      await _prefs.setString(_carouselItemCountKey, json.encode(_carouselItemCount));
+    }
   }
 
   // Save maps to SharedPreferences
@@ -699,6 +809,9 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setString(_showTickerKey, json.encode(_showTicker));
     await _prefs.setString(_tickerAlignmentKey, json.encode(_tickerAlignment));
     await _prefs.setString(_tickerSpeedKey, json.encode(_tickerSpeed));
+    
+    // Make sure we save carousel item count
+    await _prefs.setString(_carouselItemCountKey, json.encode(_carouselItemCount));
   }
 
   Future<void> _saveData() async {
@@ -732,15 +845,43 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setDouble(_bottomMarginHeightKey, _bottomMarginHeight);
     await _prefs.setDouble(_topMarginHeightKey, _topMarginHeight);
 
+    // Save top section dimensions
+    await _prefs.setDouble(_topLeftWidthKey, _topLeftWidth);
+    await _prefs.setDouble(_topCenterWidthKey, _topCenterWidth);
+    await _prefs.setDouble(_topRightWidthKey, _topRightWidth);
+
     // Save selected images
     await _prefs.setString(_selectedLeftImageKey, _selectedLeftImage);
     await _prefs.setString(_selectedBottomImageKey, _selectedBottomImage);
     await _prefs.setString(_selectedRightImageKey, _selectedRightImage);
     await _prefs.setString(_selectedTopImageKey, _selectedTopImage);
     await _prefs.setString(_selectedMainImageKey, _selectedMainImage);
+    await _prefs.setString(_selectedTopLeftImageKey, _selectedTopLeftImage);
+    await _prefs.setString(_selectedTopCenterImageKey, _selectedTopCenterImage);
+    await _prefs.setString(_selectedTopRightImageKey, _selectedTopRightImage);
 
     // Save maps
     await _saveMaps();
+  }
+
+  // Update carousel item count in memory (save happens when exiting edit mode)
+  Future<void> setCarouselItemCount(String sectionKey, int count) async {
+    // Create a copy of the current map
+    final newCarouselItemCount = Map<String, int>.from(_carouselItemCount);
+    
+    // Update the value for the specified key
+    newCarouselItemCount[sectionKey] = count;
+    
+    // Just update the map in memory
+    _carouselItemCount = newCarouselItemCount;
+    
+    // Notify listeners, but don't save (save will happen when exiting edit mode)
+    notifyListeners();
+  }
+
+  // Force an immediate save of all settings to SharedPreferences
+  Future<void> forceSave() async {
+    await _saveData();
   }
 }
 

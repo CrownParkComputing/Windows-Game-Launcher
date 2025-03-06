@@ -55,13 +55,13 @@ class _CarouselVideoPlayerState extends State<CarouselVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.width,
-      height: widget.height,
+    return SizedBox.expand(
       child: Video(
         controller: controller,
         controls: NoVideoControls,
-        fit: BoxFit.fill,
+        fit: BoxFit.cover,
+        width: widget.width,
+        height: widget.height,
       ),
     );
   }

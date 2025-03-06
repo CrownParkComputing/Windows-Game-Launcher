@@ -9,8 +9,13 @@ import '../widgets/game_launcher_ui.dart';
 import '../utils/video_manager.dart';
 import 'batch_game_setup_screen.dart';
 
+// Add a global key outside the class to access the state
+final GlobalKey<_GameLauncherHomeState> _gameLauncherHomeKey = GlobalKey<_GameLauncherHomeState>();
+
 class GameLauncherHome extends StatefulWidget {
   final SettingsProvider settingsProvider;
+  // Add a getter for layoutManager that accesses the current state's layoutManager
+  LayoutManager? get layoutManager => _gameLauncherHomeKey.currentState?.layoutManager;
 
   const GameLauncherHome({Key? key, required this.settingsProvider})
       : super(key: key);
@@ -50,6 +55,9 @@ class _GameLauncherHomeState extends State<GameLauncherHome> {
 
   @override
   void dispose() {
+    // Save all layout settings before disposing
+    layoutManager.saveAllLayoutSettings();
+    
     // Let the VideoManager handle player disposal
     gameController.dispose();
     super.dispose();
@@ -71,7 +79,8 @@ class _GameLauncherHomeState extends State<GameLauncherHome> {
     setState(() {
       isEditMode = !isEditMode;
       if (!isEditMode) {
-        layoutManager.saveLayoutPreferences();
+        // Save all layout settings when exiting edit mode
+        layoutManager.saveAllLayoutSettings();
       }
     });
   }

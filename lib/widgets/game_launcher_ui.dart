@@ -148,21 +148,134 @@ class GameLayout extends StatelessWidget {
               SizedBox(
                 height: safeTopMarginHeight,
                 width: constraints.maxWidth,
-                child: ResizableSection(
-                  width: constraints.maxWidth,
-                  height: safeTopMarginHeight,
-                  mediaType: settingsProvider.selectedTopImage,
-                  isVertical: true,
-                  onResize: (delta) {
-                    if (isEditMode) {
-                      layoutManager.adjustTopMargin(delta, maxMarginHeight);
-                    }
-                  },
-                  sectionKey: 'top',
-                  isEditMode: isEditMode,
-                  settingsProvider: settingsProvider,
-                  selectedGameIndex: selectedGameIndex,
-                  onGameSelected: onGameSelected,
+                child: Row(
+                  children: [
+                    // Top left section
+                    SizedBox(
+                      width: layoutManager.topLeftWidth.clamp(100.0, constraints.maxWidth * 0.4),
+                      child: ResizableSection(
+                        width: layoutManager.topLeftWidth.clamp(100.0, constraints.maxWidth * 0.4),
+                        height: safeTopMarginHeight,
+                        mediaType: layoutManager.selectedTopLeftImage,
+                        isVertical: false,
+                        onResize: (delta) {
+                          if (isEditMode) {
+                            layoutManager.adjustTopLeftWidth(delta, constraints.maxWidth * 0.4);
+                          }
+                        },
+                        sectionKey: 'top_left',
+                        isEditMode: isEditMode,
+                        settingsProvider: settingsProvider,
+                        selectedGameIndex: selectedGameIndex,
+                        onGameSelected: onGameSelected,
+                        onResizeEnd: () {
+                          if (isEditMode) {
+                            layoutManager.saveAllLayoutSettings();
+                          }
+                        },
+                      ),
+                    ),
+                    
+                    // Top center section and resizer in Expanded to use remaining space
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Top center section
+                          Expanded(
+                            child: ResizableSection(
+                              width: constraints.maxWidth - layoutManager.topLeftWidth - layoutManager.topRightWidth - (isEditMode ? 10 : 0),
+                              height: safeTopMarginHeight,
+                              mediaType: layoutManager.selectedTopCenterImage,
+                              isVertical: false,
+                              onResize: (delta) {
+                                if (isEditMode) {
+                                  layoutManager.adjustTopCenterWidth(delta, constraints.maxWidth * 0.4);
+                                }
+                              },
+                              sectionKey: 'top_center',
+                              isEditMode: isEditMode,
+                              settingsProvider: settingsProvider,
+                              selectedGameIndex: selectedGameIndex,
+                              onGameSelected: onGameSelected,
+                              onResizeEnd: () {
+                                if (isEditMode) {
+                                  layoutManager.saveAllLayoutSettings();
+                                }
+                              },
+                            ),
+                          ),
+                          
+                          // Add resizer between top center and top right - ONLY when in edit mode
+                          if (isEditMode)
+                            MouseRegion(
+                              cursor: SystemMouseCursors.resizeColumn,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onPanUpdate: (details) {
+                                  // Adjust the width of the top right section based on drag
+                                  layoutManager.adjustTopRightWidth(-details.delta.dx, constraints.maxWidth * 0.4);
+                                },
+                                child: Container(
+                                  width: 10,
+                                  height: safeTopMarginHeight,
+                                  color: Colors.red,
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(
+                                          Icons.keyboard_arrow_left,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                        SizedBox(height: 4),
+                                        Icon(
+                                          Icons.drag_indicator,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                        SizedBox(height: 4),
+                                        Icon(
+                                          Icons.keyboard_arrow_right,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Top right section
+                    SizedBox(
+                      width: layoutManager.topRightWidth.clamp(100.0, constraints.maxWidth * 0.4),
+                      child: ResizableSection(
+                        width: layoutManager.topRightWidth.clamp(100.0, constraints.maxWidth * 0.4),
+                        height: safeTopMarginHeight,
+                        mediaType: layoutManager.selectedTopRightImage,
+                        isVertical: false,
+                        onResize: (delta) {
+                          if (isEditMode) {
+                            layoutManager.adjustTopRightWidth(delta, constraints.maxWidth * 0.4);
+                          }
+                        },
+                        sectionKey: 'top_right',
+                        isEditMode: isEditMode,
+                        settingsProvider: settingsProvider,
+                        selectedGameIndex: selectedGameIndex,
+                        onGameSelected: onGameSelected,
+                        onResizeEnd: () {
+                          if (isEditMode) {
+                            layoutManager.saveAllLayoutSettings();
+                          }
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
@@ -183,8 +296,7 @@ class GameLayout extends StatelessWidget {
                         isVertical: false,
                         onResize: (delta) {
                           if (isEditMode) {
-                            layoutManager.adjustLeftMargin(
-                                delta, maxMarginWidth);
+                            layoutManager.adjustLeftMargin(delta, constraints.maxWidth * 0.4);
                           }
                         },
                         sectionKey: 'left',
@@ -192,6 +304,11 @@ class GameLayout extends StatelessWidget {
                         settingsProvider: settingsProvider,
                         selectedGameIndex: selectedGameIndex,
                         onGameSelected: onGameSelected,
+                        onResizeEnd: () {
+                          if (isEditMode) {
+                            layoutManager.saveAllLayoutSettings();
+                          }
+                        },
                       ),
                     ),
 
@@ -203,6 +320,48 @@ class GameLayout extends StatelessWidget {
                           minHeight: centerHeight,
                           maxHeight: centerHeight)),
                     ),
+
+                    // Add resizer between main view and right margin
+                    if (isEditMode)
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeColumn,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (details) {
+                            // Adjust the width of the right margin based on drag
+                            layoutManager.adjustRightMargin(-details.delta.dx, maxMarginWidth);
+                          },
+                          child: Container(
+                            width: 10,
+                            height: centerHeight,
+                            color: Colors.red,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(
+                                    Icons.keyboard_arrow_left,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Icon(
+                                    Icons.drag_indicator,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Icon(
+                                    Icons.keyboard_arrow_right,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
 
                     // Right margin
                     SizedBox(
@@ -216,8 +375,7 @@ class GameLayout extends StatelessWidget {
                         isVertical: false,
                         onResize: (delta) {
                           if (isEditMode) {
-                            layoutManager.adjustRightMargin(
-                                delta, maxMarginWidth);
+                            layoutManager.adjustRightMargin(delta, constraints.maxWidth * 0.4);
                           }
                         },
                         sectionKey: 'right',
@@ -225,6 +383,11 @@ class GameLayout extends StatelessWidget {
                         settingsProvider: settingsProvider,
                         selectedGameIndex: selectedGameIndex,
                         onGameSelected: onGameSelected,
+                        onResizeEnd: () {
+                          if (isEditMode) {
+                            layoutManager.saveAllLayoutSettings();
+                          }
+                        },
                       ),
                     ),
                   ],
@@ -242,7 +405,7 @@ class GameLayout extends StatelessWidget {
                   isVertical: true,
                   onResize: (delta) {
                     if (isEditMode) {
-                      layoutManager.adjustBottomMargin(delta, maxMarginHeight);
+                      layoutManager.adjustBottomMargin(delta, constraints.maxHeight * 0.4);
                     }
                   },
                   sectionKey: 'bottom',
@@ -250,6 +413,11 @@ class GameLayout extends StatelessWidget {
                   settingsProvider: settingsProvider,
                   selectedGameIndex: selectedGameIndex,
                   onGameSelected: onGameSelected,
+                  onResizeEnd: () {
+                    if (isEditMode) {
+                      layoutManager.saveAllLayoutSettings();
+                    }
+                  },
                 ),
               ),
             ],
@@ -286,6 +454,11 @@ class GameLayout extends StatelessWidget {
               settingsProvider: settingsProvider,
               selectedGameIndex: selectedGameIndex,
               onGameSelected: onGameSelected,
+              onResizeEnd: () {
+                if (isEditMode) {
+                  layoutManager.saveAllLayoutSettings();
+                }
+              },
             ),
           ),
         );

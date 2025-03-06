@@ -4,6 +4,7 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import '../utils/steam_utils.dart';
 import '../settings_provider.dart';
+import '../models/game_config.dart';
 
 class SteamImportScreen extends StatefulWidget {
   const SteamImportScreen({super.key});
@@ -62,12 +63,13 @@ class _SteamImportScreenState extends State<SteamImportScreen> {
       }
 
       // Add game to settings
-      settingsProvider.addGame(
+      final gameConfig = GameConfig(
         name: game.name,
         executablePath: game.executablePath,
-        backgroundPath: path.join(artworkDir, 'background.jpg'),
-        coverPath: path.join(artworkDir, 'cover.jpg'),
+        logoPath: path.join(artworkDir, 'cover.jpg'),
+        bannerPath: path.join(artworkDir, 'background.jpg'),
       );
+      settingsProvider.addGame(gameConfig);
     }
 
     if (mounted) {
