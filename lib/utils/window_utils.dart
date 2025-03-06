@@ -9,7 +9,7 @@ class WindowUtils {
   // Define window sizes
   static final Map<WindowSize, Size> windowSizes = {
     WindowSize.medium: const Size(1536, 864), // 80% of 1920x1080
-    WindowSize.maximum: Size.infinite,
+    WindowSize.maximum: const Size(1920, 1080),
   };
 
   // Initialize window settings
