@@ -76,10 +76,10 @@ class GameVideoPlayer extends StatelessWidget {
           // Monitor playback position and loop when needed
           _startPlaybackMonitoring(player);
         } catch (e) {
-          print("Error loading video: $e");
+          // Removed print statement
         }
       } else {
-        print("Video file does not exist at path: $videoPath");
+        // Removed print statement
       }
     }
   }

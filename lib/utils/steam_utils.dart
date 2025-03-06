@@ -39,7 +39,7 @@ class SteamUtils {
         }
       }
     } catch (e) {
-      print('Failed to read registry: $e');
+      // Removed print statement
     }
 
     // If registry check fails, try default paths
@@ -81,7 +81,7 @@ class SteamUtils {
     final steamPath = await findSteamPath();
     
     if (steamPath == null) {
-      print('Steam installation not found');
+      // Removed print statement
       return games;
     }
 
@@ -128,7 +128,7 @@ class SteamUtils {
               }
             }
           } catch (e) {
-            print('Error parsing manifest: $e');
+            // Removed print statement
           }
         }
       }

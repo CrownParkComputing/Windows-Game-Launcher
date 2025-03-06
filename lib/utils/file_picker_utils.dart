@@ -17,7 +17,7 @@ class FilePickerUtils {
         return result.files.first.path;
       }
     } catch (e) {
-      debugPrint('Error picking executable: $e');
+      // Removed debugPrint statement
     }
     return null;
   }
@@ -76,7 +76,7 @@ class FilePickerUtils {
         return result.files.first.path;
       }
     } catch (e) {
-      debugPrint('Error picking file: $e');
+      // Removed debugPrint statement
     }
     return null;
   }
@@ -96,7 +96,7 @@ class FilePickerUtils {
         return result.files.map((file) => file.path!).toList();
       }
     } catch (e) {
-      debugPrint('Error picking executables: $e');
+      // Removed debugPrint statement
     }
     return [];
   }
@@ -110,7 +110,7 @@ class FilePickerUtils {
       );
       return result;
     } catch (e) {
-      debugPrint('Error picking folder: $e');
+      // Removed debugPrint statement
     }
     return null;
   }

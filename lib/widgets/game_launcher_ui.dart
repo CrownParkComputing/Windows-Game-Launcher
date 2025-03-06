@@ -219,10 +219,10 @@ class GameLayout extends StatelessWidget {
                                   width: 10,
                                   height: safeTopMarginHeight,
                                   color: Colors.red,
-                                  child: Center(
+                                  child: const Center(
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
-                                      children: const [
+                                      children: [
                                         Icon(
                                           Icons.keyboard_arrow_left,
                                           color: Colors.white,
@@ -335,10 +335,10 @@ class GameLayout extends StatelessWidget {
                             width: 10,
                             height: centerHeight,
                             color: Colors.red,
-                            child: Center(
+                            child: const Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
+                                children: [
                                   Icon(
                                     Icons.keyboard_arrow_left,
                                     color: Colors.white,

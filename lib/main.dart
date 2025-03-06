@@ -142,9 +142,9 @@ class _GameLauncherAppState extends State<GameLauncherApp> with WidgetsBindingOb
             );
           },
         ),
-        '/main': (context) => Scaffold(
-          appBar: const CustomWindowAppBar(),
-          body: const MainScreen(),
+        '/main': (context) => const Scaffold(
+          appBar: CustomWindowAppBar(),
+          body: MainScreen(),
         ),
       },
     );

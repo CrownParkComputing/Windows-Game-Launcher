@@ -17,7 +17,7 @@ class _SteamImportScreenState extends State<SteamImportScreen> {
   List<SteamGame> _steamGames = [];
   bool _isLoading = true;
   String? _error;
-  Set<String> _selectedGames = {};
+  final Set<String> _selectedGames = {};
 
   @override
   void initState() {
@@ -59,7 +59,7 @@ class _SteamImportScreenState extends State<SteamImportScreen> {
       try {
         await Directory(artworkDir).create(recursive: true);
       } catch (e) {
-        print('Failed to create artwork directory for ${game.name}: $e');
+        // Removed print statement
       }
 
       // Add game to settings

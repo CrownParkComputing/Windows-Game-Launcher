@@ -5,7 +5,6 @@ import 'package:path/path.dart' as path;
 import '../utils/file_picker_utils.dart';
 import '../models/game_config.dart';
 import '../settings_provider.dart';
-import 'steam_import_screen.dart';
 
 class BatchGameSetupScreen extends StatefulWidget {
   const BatchGameSetupScreen({super.key});
@@ -207,7 +206,7 @@ class _BatchGameSetupScreenState extends State<BatchGameSetupScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error searching directory $directory: $e');
+      // Removed debugPrint statement
     }
     return null;
   }
@@ -286,7 +285,7 @@ class _BatchGameSetupScreenState extends State<BatchGameSetupScreen> {
           settingsProvider.addGame(gameConfig);
           setState(() => _savedGamesCount++);
         } catch (e) {
-          debugPrint('Error saving game ${item.gameName}: $e');
+          // Removed debugPrint statement
           setState(() => _failedGamesCount++);
         }
       }

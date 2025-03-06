@@ -43,7 +43,7 @@ class _GameLauncherHomeState extends State<GameLauncherHome> {
     videoController = VideoController(player);
 
     // Initialize controllers
-    layoutManager = LayoutManager(widget.settingsProvider);
+    layoutManager = LayoutManager(settingsProvider: widget.settingsProvider);
     gameController = GameController(
       games: widget.settingsProvider.games,
       player: player,

@@ -22,7 +22,7 @@ class VideoManager {
       // Fix: Don't use await inside the try block with void return type
       MediaKit.ensureInitialized();
     } catch (e) {
-      debugPrint('MediaKit already initialized or error: $e');
+      // Removed debugPrint statement
     }
   }
 
@@ -38,7 +38,7 @@ class VideoManager {
   Future<void> loadVideo(String key, String videoPath,
       {bool autoPlay = true, bool loop = true}) async {
     if (!File(videoPath).existsSync()) {
-      debugPrint('Video file not found: $videoPath');
+      // Removed debugPrint statement
       return;
     }
 
@@ -60,7 +60,7 @@ class VideoManager {
       // Set volume lower to avoid loud videos
       player.setVolume(70);
     } catch (e) {
-      debugPrint('Error loading video: $e');
+      // Removed debugPrint statement
     }
   }
 

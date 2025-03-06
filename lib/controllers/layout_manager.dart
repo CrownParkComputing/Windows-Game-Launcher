@@ -27,7 +27,7 @@ class LayoutManager {
   String selectedBottomImage;
   String selectedMainImage;
 
-  LayoutManager(this.settingsProvider)
+  LayoutManager({required this.settingsProvider})
       : leftMarginWidth = settingsProvider.leftMarginWidth,
         rightMarginWidth = settingsProvider.rightMarginWidth,
         topMarginHeight = settingsProvider.topMarginHeight,
@@ -58,7 +58,111 @@ class LayoutManager {
             : settingsProvider.selectedBottomImage,
         selectedMainImage = settingsProvider.selectedMainImage.isEmpty
             ? 'banner'
-            : settingsProvider.selectedMainImage;
+            : settingsProvider.selectedMainImage {
+    // After assigning the initial values, check if there's a static image path
+    // for each section. If so, set the media type to "static_image"
+    for (var key in [
+      'left',
+      'right',
+      'top',
+      'bottom',
+      'main',
+      'top_left',
+      'top_center',
+      'top_right'
+    ]) {
+      final path = settingsProvider.getStaticImagePath(key);
+      if (path != null && path.isNotEmpty) {
+        switch (key) {
+          case 'left':
+            selectedLeftImage = 'static_image';
+            break;
+          case 'right':
+            selectedRightImage = 'static_image';
+            break;
+          case 'top':
+            selectedTopImage = 'static_image';
+            break;
+          case 'bottom':
+            selectedBottomImage = 'static_image';
+            break;
+          case 'main':
+            selectedMainImage = 'static_image';
+            break;
+          case 'top_left':
+            selectedTopLeftImage = 'static_image';
+            break;
+          case 'top_center':
+            selectedTopCenterImage = 'static_image';
+            break;
+          case 'top_right':
+            selectedTopRightImage = 'static_image';
+            break;
+        }
+      }
+    }
+
+    // Check consistency between static image paths and media types
+    for (var key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
+      final path = settingsProvider.getStaticImagePath(key);
+      var mediaType = '';
+      switch (key) {
+        case 'left':
+          mediaType = selectedLeftImage;
+          break;
+        case 'right':
+          mediaType = selectedRightImage;
+          break;
+        case 'top':
+          mediaType = selectedTopImage;
+          break;
+        case 'top_left':
+          mediaType = selectedTopLeftImage;
+          break;
+        case 'top_center':
+          mediaType = selectedTopCenterImage;
+          break;
+        case 'top_right':
+          mediaType = selectedTopRightImage;
+          break;
+        case 'bottom':
+          mediaType = selectedBottomImage;
+          break;
+        case 'main':
+          mediaType = selectedMainImage;
+          break;
+      }
+      if (path != null && path.isNotEmpty && mediaType != 'static_image') {
+        // Auto-correct the issue
+        switch (key) {
+          case 'left':
+            selectedLeftImage = 'static_image';
+            break;
+          case 'right':
+            selectedRightImage = 'static_image';
+            break;
+          case 'top':
+            selectedTopImage = 'static_image';
+            break;
+          case 'top_left':
+            selectedTopLeftImage = 'static_image';
+            break;
+          case 'top_center':
+            selectedTopCenterImage = 'static_image';
+            break;
+          case 'top_right':
+            selectedTopRightImage = 'static_image';
+            break;
+          case 'bottom':
+            selectedBottomImage = 'static_image';
+            break;
+          case 'main':
+            selectedMainImage = 'static_image';
+            break;
+        }
+      }
+    }
+  }
 
   // Check if we should update based on throttle interval
   bool _shouldUpdate() {
@@ -68,6 +172,27 @@ class LayoutManager {
       return true;
     }
     return false;
+  }
+
+  // Debug method to print current layout settings
+  void debugPrintLayoutSettings() {
+    print("Current Layout Settings:");
+    print("Left Section Media Type: $selectedLeftImage");
+    print("Right Section Media Type: $selectedRightImage");
+    print("Top Section Media Type: $selectedTopImage");
+    print("Bottom Section Media Type: $selectedBottomImage");
+    print("Main Section Media Type: $selectedMainImage");
+    print("Top Left Section Media Type: $selectedTopLeftImage");
+    print("Top Center Section Media Type: $selectedTopCenterImage");
+    print("Top Right Section Media Type: $selectedTopRightImage");
+    
+    // Print static image paths
+    for (var key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
+      final path = settingsProvider.getStaticImagePath(key);
+      if (path != null) {
+        print("$key: $path");
+      }
+    }
   }
 
   // Adjust top margin height with limits
@@ -289,6 +414,19 @@ class LayoutManager {
   void saveAllLayoutSettings() {
     print("Saving all layout settings to persistent storage");
     
+    // Print debug information about media types being saved
+    print("Saving media types:");
+    print("Left: $selectedLeftImage");
+    print("Right: $selectedRightImage");
+    print("Top: $selectedTopImage");
+    print("Bottom: $selectedBottomImage");
+    print("Main: $selectedMainImage");
+    print("Top Left: $selectedTopLeftImage");
+    print("Top Center: $selectedTopCenterImage");
+    print("Top Right: $selectedTopRightImage");
+    
+    // Print static image paths being saved
+    
     // Ensure we have the latest data from settings provider where needed
     final currentIsCarouselMap = settingsProvider.isCarouselMap;
     final currentAlignmentMap = settingsProvider.alignmentMap;
@@ -324,5 +462,7 @@ class LayoutManager {
     
     // Force an immediate save to SharedPreferences
     settingsProvider.forceSave();
+    
+    // Print confirmation
   }
 }
