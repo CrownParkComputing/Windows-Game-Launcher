@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../settings_provider.dart';
 import 'spinning_disc.dart';
 import '../models/game_config.dart';
@@ -47,22 +48,36 @@ class GameCarousel extends StatefulWidget {
   State<GameCarousel> createState() => _GameCarouselState();
 }
 
-class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderStateMixin {
+class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMixin {
   late ScrollController _tickerController;
   late AnimationController _tickerAnimationController;
-  late ScrollController _carouselScrollController;
   String? _storyText;
   int _previousSelectedIndex = 0;
+  
+  // Add animation controller for selection
+  late AnimationController _selectionAnimationController;
+  late Animation<double> _selectionAnimation;
 
   @override
   void initState() {
     super.initState();
     _tickerController = ScrollController();
-    _carouselScrollController = ScrollController();
     _tickerAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 120),
     )..repeat();
+    
+    // Initialize selection animation controller
+    _selectionAnimationController = AnimationController(
+      vsync: this, 
+      duration: const Duration(milliseconds: 250),
+    );
+    
+    _selectionAnimation = CurvedAnimation(
+      parent: _selectionAnimationController,
+      curve: Curves.easeInOut,
+    );
+    
     _loadStoryText();
     _previousSelectedIndex = widget.selectedIndex;
   }
@@ -70,8 +85,8 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
   @override
   void dispose() {
     _tickerController.dispose();
-    _carouselScrollController.dispose();
     _tickerAnimationController.dispose();
+    _selectionAnimationController.dispose();
     super.dispose();
   }
 
@@ -102,26 +117,32 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
   @override
   void didUpdateWidget(GameCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedIndex != widget.selectedIndex || 
-        oldWidget.mediaType != widget.mediaType) {
+    
+    // Log changes that affect game selection or media display
+    if (oldWidget.selectedIndex != widget.selectedIndex) {
+      debugPrint('SELECTION CHANGED in ${widget.sectionKey}: ${oldWidget.selectedIndex} -> ${widget.selectedIndex}');
+      
       _loadStoryText();
       // Reset animation when text changes
       _tickerAnimationController
         ..reset()
         ..repeat();
       
+      // Play selection animation when selection changes
+      _playSelectionAnimation();
+      
       // Track the change in selected index for animation
       _previousSelectedIndex = oldWidget.selectedIndex;
-      
-      // Scroll to center the selected item
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToSelectedItem();
-      });
+    }
+    
+    if (oldWidget.mediaType != widget.mediaType) {
+      debugPrint('MEDIA TYPE CHANGED in ${widget.sectionKey}: ${oldWidget.mediaType} -> ${widget.mediaType}');
+      _loadStoryText(); // Also reload story text on media type change
     }
   }
 
   String _getMediaPath(GameConfig game, String type) {
-    final mediaFolder = widget.settingsProvider.mediaFolderPath ?? SettingsProvider.mediaRootFolder;
+    final mediaFolder = widget.settingsProvider.effectiveMediaFolderPath;
     switch (type) {
       case 'logo':
         return '$mediaFolder/logo/${game.name}.png';
@@ -183,27 +204,74 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
       }
     }
     
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final effectiveWidth = constraints.maxWidth;
-        final effectiveHeight = constraints.maxHeight;
-        
-        // Adjust height for ticker if it's enabled
-        final bool showTicker = widget.settingsProvider.showTicker[widget.sectionKey] ?? false;
-        final double tickerHeight = showTicker ? 30.0 : 0.0;
-        final double contentHeight = effectiveHeight - tickerHeight;
-        const spacing = 10.0;
-        final numItemsToShow = widget.settingsProvider.carouselItemCount[widget.sectionKey] ?? SettingsProvider.defaultCarouselItemCount;
-        final itemWidth = (effectiveWidth - (spacing * (numItemsToShow - 1))) / numItemsToShow;
-
-        // Get carousel mode from settings provider
-        final shouldUseCarousel = widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? widget.isCarousel;
-        final bool isStaticImage = !shouldUseCarousel;
-
-        // Special handling for static_image media type
-        if (widget.mediaType == 'static_image') {
-          final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
+    // Wrap everything in a RawKeyboardListener to handle keyboard navigation
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (FocusNode node, KeyEvent event) {
+        if (event is KeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _onLeftArrowPressed();
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _onRightArrowPressed();
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final effectiveWidth = constraints.maxWidth;
+          final effectiveHeight = constraints.maxHeight;
           
+          // Adjust height for ticker if it's enabled
+          final bool showTicker = widget.settingsProvider.showTicker[widget.sectionKey] ?? false;
+          final double tickerHeight = showTicker ? 30.0 : 0.0;
+          final double contentHeight = effectiveHeight - tickerHeight;
+          const spacing = 10.0;
+          final numItemsToShow = widget.settingsProvider.carouselItemCount[widget.sectionKey] ?? SettingsProvider.defaultCarouselItemCount;
+          final itemWidth = (effectiveWidth - (spacing * (numItemsToShow - 1))) / numItemsToShow;
+
+          // Get carousel mode from settings provider
+          final shouldUseCarousel = widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? widget.isCarousel;
+          final bool isStaticImage = !shouldUseCarousel;
+
+          // Special handling for static_image media type
+          if (widget.mediaType == 'static_image') {
+            final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
+            
+            return Stack(
+              children: [
+                Container(
+                  width: effectiveWidth,
+                  height: effectiveHeight,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: widget.backgroundColor,
+                  ),
+                  child: Column(
+                    children: [
+                      // Add ticker at top if alignment is 'top'
+                      if (showTicker && (widget.settingsProvider.tickerAlignment[widget.sectionKey] ?? 'bottom') == 'top')
+                        _buildTicker(),
+                        
+                      // Main content with adjusted height
+                      Expanded(
+                        child: widget.isEditMode
+                          ? _buildEditModePlaceholder(contentHeight, itemWidth)
+                          : _buildStaticImageView(contentHeight, effectiveWidth, staticImagePath),
+                      ),
+                      
+                      // Add ticker at bottom if alignment is 'bottom'
+                      if (showTicker && (widget.settingsProvider.tickerAlignment[widget.sectionKey] ?? 'bottom') == 'bottom')
+                        _buildTicker(),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
+
           return Stack(
             children: [
               Container(
@@ -223,7 +291,9 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
                     Expanded(
                       child: widget.isEditMode
                         ? _buildEditModePlaceholder(contentHeight, itemWidth)
-                        : _buildStaticImageView(contentHeight, effectiveWidth, staticImagePath),
+                        : (isStaticImage
+                            ? _buildStaticView(contentHeight, effectiveWidth)
+                            : _buildCarouselView(contentHeight, effectiveWidth)),
                     ),
                     
                     // Add ticker at bottom if alignment is 'bottom'
@@ -234,41 +304,8 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
               ),
             ],
           );
-        }
-
-        return Stack(
-          children: [
-            Container(
-              width: effectiveWidth,
-              height: effectiveHeight,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: widget.backgroundColor,
-              ),
-              child: Column(
-                children: [
-                  // Add ticker at top if alignment is 'top'
-                  if (showTicker && (widget.settingsProvider.tickerAlignment[widget.sectionKey] ?? 'bottom') == 'top')
-                    _buildTicker(),
-                    
-                  // Main content with adjusted height
-                  Expanded(
-                    child: widget.isEditMode
-                      ? _buildEditModePlaceholder(contentHeight, itemWidth)
-                      : (isStaticImage
-                          ? _buildStaticView(contentHeight, effectiveWidth)
-                          : _buildCarouselView(contentHeight, effectiveWidth)),
-                  ),
-                  
-                  // Add ticker at bottom if alignment is 'bottom'
-                  if (showTicker && (widget.settingsProvider.tickerAlignment[widget.sectionKey] ?? 'bottom') == 'bottom')
-                    _buildTicker(),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -577,63 +614,10 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
     }
   }
 
-  // Get the transition direction (-1 for left, 1 for right)
-  int _getTransitionDirection() {
-    if (_previousSelectedIndex < widget.selectedIndex) {
-      return -1; // Moving right, items shift left
-    } else if (_previousSelectedIndex > widget.selectedIndex) {
-      return 1; // Moving left, items shift right
-    }
-    return 0; // No movement
-  }
-
-  // Helper method to scroll to the selected item
-  void _scrollToSelectedItem() {
-    if (!_carouselScrollController.hasClients) return;
-    
-    // Get the number of items to show from settings
-    final numItemsToShow = widget.settingsProvider.carouselItemCount[widget.sectionKey] ?? 
-        SettingsProvider.defaultCarouselItemCount;
-    
-    // Calculate item width and spacing
-    final safeWidth = widget.width.isFinite ? widget.width : 300.0;
-    const spacing = 10.0;
-    final displayItemWidth = (safeWidth - (spacing * (numItemsToShow + 1))) / numItemsToShow;
-    
-    // Calculate the number of duplicated items before the real items
-    final numDuplicatedBeforeItems = widget.games.length > 1 ? 
-        math.min(numItemsToShow, widget.games.length) : 0;
-    
-    // Calculate the offset based on the selected index plus duplicated items
-    final itemTotalWidth = displayItemWidth + spacing;
-    
-    // Start with the initial spacing
-    double offset = spacing;
-    
-    // Add width of duplicated items before actual items
-    offset += numDuplicatedBeforeItems * itemTotalWidth;
-    
-    // Add width up to the selected item
-    offset += widget.selectedIndex * itemTotalWidth;
-    
-    // Adjust to center the item in the viewport
-    offset -= (safeWidth - displayItemWidth) / 2;
-    
-    // Ensure offset is within bounds
-    final maxOffset = _carouselScrollController.position.maxScrollExtent;
-    const minOffset = 0.0;
-    final safeOffset = math.max(minOffset, math.min(offset, maxOffset));
-    
-    // Animate to the position
-    _carouselScrollController.animateTo(
-      safeOffset,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   Widget _buildCarouselView(double height, double width) {
     if (widget.games.isEmpty) return const SizedBox.shrink();
+    
+    debugPrint('Building carousel view for section ${widget.sectionKey}: selected=${widget.selectedIndex}');
 
     // Get the number of items to show from settings
     final numItemsToShow = widget.settingsProvider.carouselItemCount[widget.sectionKey] ?? 
@@ -648,38 +632,45 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
     final itemHeight = height * 0.75; // Reduced from 0.8 to give more room for navigation
     final navigationHeight = height * 0.25; // Explicit height for navigation section
     
-    // Add more duplicates at each end to ensure smooth continuous scrolling
-    final int numDuplicatesNeeded = (numItemsToShow * 3).round();
-    final numDuplicatedItems = widget.games.length > 1 ? 
-        math.min(numDuplicatesNeeded, widget.games.length * 3) : 0;
+    // Create list of items for just the visible games - no duplicates
+    final List<Widget> visibleItems = [];
     
-    final totalItemsWidth = (widget.games.length + (numDuplicatedItems * 2)) * (displayItemWidth + spacing) + spacing;
+    // Determine which games should be visible in the carousel based on selection
+    final int totalGames = widget.games.length;
     
-    // Create list of items (same as before)
-    final List<Widget> allItems = [];
+    // Show the selected game in the center and balanced items on each side
+    final int startIndex = widget.selectedIndex - (numItemsToShow ~/ 2);
     
-    // Add duplicated items at the start
-    if (widget.games.length > 1) {
-      for (var i = 0; i < numDuplicatedItems; i++) {
-        final gameIndex = (widget.games.length - 1) - (i % widget.games.length);
-        allItems.add(_buildCarouselItem(displayItemWidth, itemHeight, gameIndex, spacing));
-      }
+    // Build just enough items to fill the view
+    for (int i = 0; i < numItemsToShow; i++) {
+      // Calculate the actual index with wrapping
+      int actualIndex = (startIndex + i) % totalGames;
+      if (actualIndex < 0) actualIndex += totalGames;
+      
+      // Add the item - wrap in AnimatedContainer for smooth transitions
+      visibleItems.add(
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          margin: EdgeInsets.symmetric(
+            horizontal: spacing / 2,
+            vertical: actualIndex == widget.selectedIndex ? 0 : 10, // Move selected item down slightly
+          ),
+          child: _buildCarouselItem(
+            displayItemWidth, 
+            actualIndex == widget.selectedIndex ? itemHeight : itemHeight * 0.9, // Selected item is slightly larger 
+            actualIndex, 
+            0, // No additional spacing needed since we're using container margins
+          ),
+        ),
+      );
     }
     
-    // Add main items
-    for (var i = 0; i < widget.games.length; i++) {
-      allItems.add(_buildCarouselItem(displayItemWidth, itemHeight, i, spacing));
-    }
-    
-    // Add duplicated items at the end
-    if (widget.games.length > 1) {
-      for (var i = 0; i < numDuplicatedItems; i++) {
-        final gameIndex = i % widget.games.length;
-        allItems.add(_buildCarouselItem(displayItemWidth, itemHeight, gameIndex, spacing));
-      }
-    }
+    // Add a key to the SizedBox to force rebuilds when the selected index changes
+    final carouselKey = ValueKey('carousel_${widget.sectionKey}_${widget.selectedIndex}');
     
     return SizedBox(
+      key: carouselKey,
       height: height,
       width: safeWidth,
       child: Column(
@@ -687,41 +678,34 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
           // Main carousel with items - explicit height
           SizedBox(
             height: itemHeight,
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (notification) {
-                return true;
-              },
-              child: SingleChildScrollView(
-                controller: _carouselScrollController,
-                scrollDirection: Axis.horizontal,
-                physics: const NeverScrollableScrollPhysics(),
-                child: SizedBox(
-                  width: totalItemsWidth,
-                  height: itemHeight,
-                  child: Stack(
-                    children: [
-                      Row(
-                        children: [
-                          const SizedBox(width: spacing),
-                          ...allItems,
-                        ],
-                      ),
-                      Positioned(
-                        left: safeWidth / 2 - displayItemWidth / 2,
-                        top: 0,
-                        child: Container(
-                          width: displayItemWidth,
-                          height: itemHeight,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white, width: 2),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+            child: Stack(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: visibleItems,
+                ),
+                
+                // Center highlight indicator - make it more visible but not distracting
+                Positioned(
+                  left: safeWidth / 2 - displayItemWidth / 2 - 5,
+                  top: 0,
+                  child: Container(
+                    width: displayItemWidth + 10,
+                    height: itemHeight,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blue.withOpacity(0.5), width: 2),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withOpacity(0.15),
+                          blurRadius: 8,
+                          spreadRadius: 2,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
           
@@ -731,33 +715,116 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 40),
-                  icon: const Icon(Icons.arrow_left, color: Colors.white, size: 32),
-                  onPressed: _onLeftArrowPressed,
-                ),
-                Expanded(
-                  child: Container(
-                    alignment: Alignment.center,
-                    child: Text(
-                      widget.games[widget.selectedIndex].name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                // Left arrow button - make it more visible
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(30),
+                    onTap: _onLeftArrowPressed,
+                    child: AnimatedBuilder(
+                      animation: _selectionAnimation,
+                      builder: (context, child) {
+                        // Apply a bounce effect when clicked
+                        final scaleFactor = widget.selectedIndex < widget.games.length - 1 
+                            ? 1.0 - (_selectionAnimation.value * 0.15) + (math.sin(_selectionAnimation.value * math.pi) * 0.05)
+                            : 1.0;
+                        return Transform.scale(
+                          scale: scaleFactor,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.2 + (_selectionAnimation.value * 0.3)),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 40),
-                  icon: const Icon(Icons.arrow_right, color: Colors.white, size: 32),
-                  onPressed: _onRightArrowPressed,
+                
+                // Game name - center with animation
+                Expanded(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    alignment: Alignment.center,
+                    margin: const EdgeInsets.symmetric(horizontal: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+                    ),
+                    child: AnimatedBuilder(
+                      animation: _selectionAnimation,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: 1.0 + (_selectionAnimation.value * 0.05),
+                          child: Opacity(
+                            opacity: 0.7 + (_selectionAnimation.value * 0.3),
+                            child: Text(
+                              widget.games[widget.selectedIndex].name,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18 + (_selectionAnimation.value * 1.0),
+                                fontWeight: FontWeight.bold,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.blue.withOpacity(_selectionAnimation.value * 0.8),
+                                    blurRadius: 8.0 * _selectionAnimation.value,
+                                    offset: const Offset(0, 0),
+                                  ),
+                                ],
+                              ),
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                
+                // Right arrow button - make it more visible
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(30),
+                    onTap: _onRightArrowPressed,
+                    child: AnimatedBuilder(
+                      animation: _selectionAnimation,
+                      builder: (context, child) {
+                        // Apply a bounce effect when clicked
+                        final scaleFactor = widget.selectedIndex > 0 
+                            ? 1.0 - (_selectionAnimation.value * 0.15) + (math.sin(_selectionAnimation.value * math.pi) * 0.05)
+                            : 1.0;
+                        return Transform.scale(
+                          scale: scaleFactor,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.2 + (_selectionAnimation.value * 0.3)),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -769,22 +836,84 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
 
   // Helper method to build a carousel item
   Widget _buildCarouselItem(double displayItemWidth, double itemHeight, int index, double spacing) {
+    final GameConfig game = widget.games[index];
+    final bool isSelected = index == widget.selectedIndex;
+    
     return GestureDetector(
       onTap: () {
+        debugPrint('Carousel item tapped: section=${widget.sectionKey}, index=$index');
         if (widget.onGameSelected != null) {
           widget.onGameSelected!(index);
+          
+          // Play selection animation when tapped
+          if (isSelected) {
+            _playSelectionAnimation();
+          }
         }
       },
-      child: Container(
-        width: displayItemWidth,
-        height: itemHeight,
-        margin: EdgeInsets.symmetric(horizontal: spacing / 2),
-        child: _buildGameItem(
-          widget.games[index],
-          itemHeight,
-          displayItemWidth,
-          index == widget.selectedIndex
-        ),
+      child: AnimatedBuilder(
+        animation: _selectionAnimation,
+        builder: (context, child) {
+          // Only apply the glow effect to the selected item
+          final glowOpacity = isSelected ? _selectionAnimation.value * 0.6 : 0.0;
+          final borderWidth = isSelected ? 3.0 + (_selectionAnimation.value * 1.0) : 1.0;
+          
+          return Container(
+            width: displayItemWidth,
+            height: itemHeight,
+            margin: EdgeInsets.symmetric(horizontal: spacing / 2),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.blue.withOpacity(0.2) : null,
+              border: Border.all(
+                color: isSelected 
+                  ? Colors.blue.withOpacity(0.7 + (_selectionAnimation.value * 0.3))
+                  : Colors.grey.withOpacity(0.3),
+                width: borderWidth,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: isSelected ? [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.3 + glowOpacity),
+                  spreadRadius: 2 + (_selectionAnimation.value * 2),
+                  blurRadius: 4 + (_selectionAnimation.value * 4),
+                  offset: const Offset(0, 0),
+                ),
+              ] : null,
+            ),
+            child: Stack(
+              children: [
+                // Main content
+                _buildGameItem(game, itemHeight, displayItemWidth, isSelected),
+                
+                // Selected indicator
+                if (isSelected)
+                  Positioned(
+                    top: 5,
+                    right: 5,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.7 + (_selectionAnimation.value * 0.3)),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.blue.withOpacity(0.3 + glowOpacity),
+                            spreadRadius: 1,
+                            blurRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 14 + (_selectionAnimation.value * 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -795,6 +924,8 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
     }
 
     final effectiveIndex = widget.selectedIndex < widget.games.length ? widget.selectedIndex : 0;
+    final selectedGame = widget.games[effectiveIndex];
+    
     // Always use full width for video to maximize display area
     final useFullWidth = widget.mediaType == 'video';
     final effectiveWidth = useFullWidth ? double.infinity : itemWidth;
@@ -805,39 +936,82 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
         height: effectiveHeight,
         alignment: Alignment.center,
         child: _buildGameItem(
-            widget.games[effectiveIndex], effectiveHeight, effectiveWidth, true),
+            selectedGame, effectiveHeight, effectiveWidth, true),
       ),
     );
   }
 
+  // Centralized method to check if media exists for a game
+  bool _doesMediaExist(GameConfig game, String mediaType) {
+    if (mediaType == 'story') return true; // Story is handled differently
+    if (mediaType == 'static_image') return true; // Static image has its own handler
+    
+    final String path = _getMediaPath(game, mediaType);
+    final bool exists = File(path).existsSync();
+    
+    // Log media status for debugging
+    debugPrint('MEDIA CHECK: Game=${game.name}, Type=$mediaType, Section=${widget.sectionKey}, Path=$path, Exists=$exists');
+    
+    return exists;
+  }
+
+  // Helper to build the game item with consistency for all sections
   Widget _buildGameItem(GameConfig game, double height, double width, bool isSelected) {
-    // Determine which type of view to show based on media type
-    if (widget.mediaType == 'static_image') {
-      // Get the static image path for this section
-      final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-      
-      return _buildStaticImageInGameItem(game, height, width, staticImagePath, isSelected);
-    } else if (widget.mediaType == 'video') {
-      final videoPath = _getMediaPath(game, 'video');
-      final videoFile = File(videoPath);
-      
-      if (videoFile.existsSync()) {
-        final aspectRatio = widget.settingsProvider.getVideoAspectRatio(widget.sectionKey) ?? 16/9;
+    // First check if media exists (consistent check for all types)
+    final bool mediaExists = _doesMediaExist(game, widget.mediaType);
+    
+    // If media doesn't exist, show the missing media placeholder regardless of type
+    if (!mediaExists && widget.mediaType != 'static_image') {
+      return _buildMissingMediaPlaceholder(game, height, width);
+    }
+    
+    // Handle specific media types
+    switch (widget.mediaType) {
+      case 'static_image':
+        final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
+        return _buildStaticImageInGameItem(game, height, width, staticImagePath, isSelected);
         
-        double videoWidth = width;
-        double videoHeight = videoWidth / aspectRatio;
-        
-        if (videoHeight > height) {
-          videoHeight = height;
-          videoWidth = videoHeight * aspectRatio;
+      case 'video':
+        if (mediaExists) {
+          final String videoPath = _getMediaPath(game, 'video');
+          final aspectRatio = widget.settingsProvider.getVideoAspectRatio(widget.sectionKey) ?? 16/9;
+          
+          double videoWidth = width;
+          double videoHeight = videoWidth / aspectRatio;
+          
+          if (videoHeight > height) {
+            videoHeight = height;
+            videoWidth = videoHeight * aspectRatio;
+          }
+          
+          return _buildCarouselVideoPlayer(game, videoWidth, videoHeight, isSelected);
+        } else {
+          return _buildMissingMediaPlaceholder(game, height, width);
         }
         
-        return _buildCarouselVideoPlayer(game, videoWidth, videoHeight, isSelected);
-      } else {
+      case 'medium_disc':
         return _buildGameCover(game, height, width, isSelected);
-      }
-    } else {
-      return _buildGameCover(game, height, width, isSelected);
+        
+      default:
+        // For all other media types (logo, artwork_front, etc)
+        if (mediaExists) {
+          final String mediaPath = _getMediaPath(game, widget.mediaType);
+          return Container(
+            width: width,
+            height: height,
+            alignment: Alignment.center,
+            child: Image.file(
+              File(mediaPath),
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                debugPrint('Error loading image: $error');
+                return _buildErrorPlaceholder(game, height, width);
+              },
+            ),
+          );
+        } else {
+          return _buildMissingMediaPlaceholder(game, height, width);
+        }
     }
   }
 
@@ -874,6 +1048,9 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
     final file = File(staticImagePath);
     final exists = file.existsSync();
     
+    // Log static image status for debugging
+    debugPrint('Static image in ${widget.sectionKey}: path=$staticImagePath, exists=$exists');
+    
     if (!exists) {
       return Container(
         width: width,
@@ -902,7 +1079,7 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
             Text(
               staticImagePath,
               style: const TextStyle(
-                color: Colors.white70,
+                color: Colors.white60,
                 fontSize: 10,
                 fontWeight: FontWeight.w400,
               ),
@@ -914,91 +1091,92 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
         ),
       );
     }
-
+    
     try {
-      return Center(
+      // Save the path again to ensure it persists correctly
+      widget.settingsProvider.setStaticImagePath(widget.sectionKey, staticImagePath);
+      
+      return Container(
+        width: width,
+        height: height,
+        alignment: Alignment.center,
         child: Image.file(
           file,
           fit: BoxFit.contain,
-          width: width,
-          height: height,
           errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: Container(
-                color: widget.backgroundColor,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Colors.red,
+            debugPrint('Error loading static image: $error');
+            return Container(
+              color: widget.backgroundColor,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Error loading image',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Error loading image',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    error.toString(),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w400,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      error.toString(),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             );
           },
         ),
       );
     } catch (e) {
-      return Center(
-        child: Container(
-          color: widget.backgroundColor,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.red,
+      return Container(
+        color: widget.backgroundColor,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Exception loading image',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Exception loading image',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              e.toString(),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.w400,
               ),
-              const SizedBox(height: 8),
-              Text(
-                e.toString(),
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w400,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       );
     }
@@ -1420,75 +1598,11 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
     );
   }
 
-  // Handle infinite scrolling after the scrolling has finished
-  void _handleAfterScroll() {
-    // DISABLED - no more automatic scrolling
-    return;
-    
-    /* Original code commented out to prevent any auto-jumping
-    if (!_carouselScrollController.hasClients || widget.games.isEmpty) return;
-    
-    final position = _carouselScrollController.position;
-    final numItemsToShow = widget.settingsProvider.carouselItemCount[widget.sectionKey] ?? 
-        SettingsProvider.defaultCarouselItemCount;
-    
-    // Calculate item width and spacing
-    final safeWidth = widget.width.isFinite ? widget.width : 300.0;
-    const spacing = 10.0;
-    final displayItemWidth = (safeWidth - (spacing * (numItemsToShow + 1))) / numItemsToShow;
-    final itemTotalWidth = displayItemWidth + spacing;
-    
-    // Calculate the number of duplicated items (same value as in _buildCarouselView)
-    final int numDuplicatesNeeded = (numItemsToShow * 3).round();
-    final numDuplicatedItems = widget.games.length > 1 ? 
-        math.min(numDuplicatesNeeded, widget.games.length * 3) : 0;
-    
-    // Calculate the transition points
-    final realItemsWidth = widget.games.length * itemTotalWidth;
-    final realItemsStartOffset = numDuplicatedItems * itemTotalWidth;
-    final realItemsEndOffset = realItemsStartOffset + realItemsWidth;
-    
-    // Find the center of the viewport in the scroll space
-    final visibleCenter = position.pixels + (safeWidth / 2);
-    
-    // Determine which item is at the center
-    int visibleItemIndex;
-    
-    // If we're in the duplicated items at the start
-    if (visibleCenter < realItemsStartOffset) {
-      final distanceFromStart = realItemsStartOffset - visibleCenter;
-      final itemsFromStart = (distanceFromStart / itemTotalWidth).floor();
-      visibleItemIndex = (widget.games.length - (itemsFromStart % widget.games.length)) % widget.games.length;
-      
-      // Only update the selected index
-    }
-    // If we're in the duplicated items at the end
-    else if (visibleCenter >= realItemsEndOffset) {
-      final distanceFromEnd = visibleCenter - realItemsEndOffset;
-      final itemsFromEnd = (distanceFromEnd / itemTotalWidth).floor();
-      visibleItemIndex = itemsFromEnd % widget.games.length;
-      
-      // Only update the selected index
-    }
-    // If we're in the real items
-    else {
-      final distanceFromRealStart = visibleCenter - realItemsStartOffset;
-      visibleItemIndex = (distanceFromRealStart / itemTotalWidth).floor() % widget.games.length;
-    }
-    
-    // Update the selected index if needed
-    if (visibleItemIndex != widget.selectedIndex && widget.onGameSelected != null) {
-      widget.onGameSelected!(visibleItemIndex);
-    }
-    */
-  }
-
   // Left arrow button handler
   void _onLeftArrowPressed() {
     if (widget.games.isEmpty) return;
     
-    // Disable current item selection
-    _previousSelectedIndex = widget.selectedIndex;
+    debugPrint('Left arrow pressed in ${widget.sectionKey} carousel');
     
     // Update the selected index with wraparound
     int newIndex;
@@ -1498,9 +1612,24 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
       newIndex = widget.games.length - 1;
     }
     
+    debugPrint('Changing selection from ${widget.selectedIndex} to $newIndex');
+    
+    // Play selection animation
+    _playSelectionAnimation();
+    
     // Notify parent
     if (widget.onGameSelected != null) {
       widget.onGameSelected!(newIndex);
+      
+      // Trigger the rebuild directly
+      Future.microtask(() {
+        if (mounted) {
+          setState(() {
+            // This empty setState forces a rebuild
+            debugPrint('Forcing rebuild after left arrow press');
+          });
+        }
+      });
     }
   }
   
@@ -1508,8 +1637,7 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
   void _onRightArrowPressed() {
     if (widget.games.isEmpty) return;
     
-    // Disable current item selection
-    _previousSelectedIndex = widget.selectedIndex;
+    debugPrint('Right arrow pressed in ${widget.sectionKey} carousel');
     
     // Update the selected index with wraparound
     int newIndex;
@@ -1519,9 +1647,24 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
       newIndex = 0;
     }
     
+    debugPrint('Changing selection from ${widget.selectedIndex} to $newIndex');
+    
+    // Play selection animation
+    _playSelectionAnimation();
+    
     // Notify parent
     if (widget.onGameSelected != null) {
       widget.onGameSelected!(newIndex);
+      
+      // Trigger the rebuild directly
+      Future.microtask(() {
+        if (mounted) {
+          setState(() {
+            // This empty setState forces a rebuild
+            debugPrint('Forcing rebuild after right arrow press');
+          });
+        }
+      });
     }
   }
 
@@ -1690,48 +1833,14 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
   // Helper method to build a game cover item
   Widget _buildGameCover(GameConfig game, double height, double width, bool isSelected) {
     String mediaPath = _getMediaPath(game, widget.mediaType);
+    
+    // Debug output to help diagnose issues
+    debugPrint('Building cover for game: ${game.name}, media type: ${widget.mediaType}, section: ${widget.sectionKey}, path exists: ${File(mediaPath).existsSync()}');
+    
     // Skip file existence check for story
     if (!File(mediaPath).existsSync() && widget.mediaType != 'story') {
-      return Container(
-        width: width,
-        height: height,
-        alignment: Alignment.center,
-        color: widget.backgroundColor,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _getMediaTypeIcon(),
-              size: math.min(64, height * 0.3),
-              color: Colors.white,
-            ),
-            SizedBox(height: math.min(12, height * 0.05)),
-            Text(
-              'N/A',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: math.min(28, height * 0.1),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: math.min(12, height * 0.05)),
-            Flexible(
-              child: Text(
-                'No ${widget.mediaType.replaceAll('_', ' ')} available',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: math.min(14, height * 0.06),
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
-            ),
-          ],
-        ),
-      );
+      debugPrint('Showing N/A for ${game.name} in section ${widget.sectionKey} with media type ${widget.mediaType}');
+      return _buildMissingMediaPlaceholder(game, height, width);
     }
 
     switch (widget.mediaType) {
@@ -1797,6 +1906,7 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
           ),
         );
       default:
+        debugPrint('Displaying image for ${game.name} from path: $mediaPath');
         return Container(
           width: width,
           height: height,
@@ -1804,9 +1914,116 @@ class _GameCarouselState extends State<GameCarousel> with SingleTickerProviderSt
           child: Image.file(
             File(mediaPath),
             fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              // If image fails to load, show N/A with error
+              debugPrint('Error loading image for ${game.name}: $error');
+              return _buildErrorPlaceholder(game, height, width);
+            },
           ),
         );
     }
+  }
+
+  // Create a dedicated method for the missing media placeholder
+  Widget _buildMissingMediaPlaceholder(GameConfig game, double height, double width) {
+    debugPrint('Building missing media placeholder for ${game.name} in ${widget.sectionKey}');
+    
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      color: widget.backgroundColor,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _getMediaTypeIcon(),
+            size: math.min(64, height * 0.3),
+            color: Colors.white,
+          ),
+          SizedBox(height: math.min(12, height * 0.05)),
+          Text(
+            'N/A',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: math.min(28, height * 0.1),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: math.min(12, height * 0.05)),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                'No ${widget.mediaType.replaceAll('_', ' ')} for "${game.name}"',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: math.min(14, height * 0.06),
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Create a dedicated method for error placeholder
+  Widget _buildErrorPlaceholder(GameConfig game, double height, double width) {
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      color: widget.backgroundColor,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _getMediaTypeIcon(),
+            size: math.min(64, height * 0.3),
+            color: Colors.red,
+          ),
+          SizedBox(height: math.min(12, height * 0.05)),
+          Text(
+            'Error',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: math.min(28, height * 0.1),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: math.min(12, height * 0.05)),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                'Failed to load ${widget.mediaType.replaceAll('_', ' ')}',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: math.min(14, height * 0.06),
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Play the selection animation
+  void _playSelectionAnimation() {
+    _selectionAnimationController.reset();
+    _selectionAnimationController.forward();
   }
 }
 

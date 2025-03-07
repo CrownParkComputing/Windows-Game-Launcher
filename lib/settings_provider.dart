@@ -264,6 +264,13 @@ class SettingsProvider extends ChangeNotifier {
     return path;
   }
   
+  // Clear a static image path for a specific section
+  void clearStaticImagePath(String sectionKey) {
+    debugPrint('Clearing static image path for section: $sectionKey');
+    // This will remove the path from the map and also from SharedPreferences
+    setStaticImagePath(sectionKey, null);
+  }
+  
   // Set a video aspect ratio for a specific section
   void setVideoAspectRatio(String sectionKey, double aspectRatio) {
     _videoAspectRatios[sectionKey] = aspectRatio;
@@ -311,114 +318,36 @@ class SettingsProvider extends ChangeNotifier {
 
   // Initialize settings
   Future<void> _initializeSettings() async {
+    debugPrint('Initializing settings provider');
     _prefs = await SharedPreferences.getInstance();
     
     // Load saved paths
     _parentFolderPath = _prefs.getString(_parentFolderPathKey);
     _gamesFolderPath = _prefs.getString(_gamesFolderPathKey);
     _mediaFolderPath = _prefs.getString(_mediaFolderPathKey);
+    debugPrint('Loaded paths: parent=$_parentFolderPath, games=$_gamesFolderPath, media=$_mediaFolderPath');
     
-    // Load static image paths directly from individual keys
-    final List<String> sectionKeys = ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right'];
-    for (var key in sectionKeys) {
-      // Try direct key first
-      String? directPath = _prefs.getString('static_image_direct_$key');
-      
-      // If not found, try older key formats for backward compatibility
-      if (directPath == null || directPath.isEmpty) {
-        directPath = _prefs.getString('static_image_$key');
-      }
-      if (directPath == null || directPath.isEmpty) {
-        directPath = _prefs.getString('static_image_path_$key');
-      }
-      
-      if (directPath != null && directPath.isNotEmpty) {
-        _staticImagePaths[key] = directPath;
-        
-        // Also save with the new direct key format to ensure future compatibility
-        _prefs.setString('static_image_direct_$key', directPath);
-        
-        // Set the media type to 'static_image' if a static image path exists
-        switch (key) {
-          case 'left':
-            _selectedLeftImage = 'static_image';
-            break;
-          case 'right':
-            _selectedRightImage = 'static_image';
-            break;
-          case 'top':
-            _selectedTopImage = 'static_image';
-            break;
-          case 'top_left':
-            _selectedTopLeftImage = 'static_image';
-            break;
-          case 'top_center':
-            _selectedTopCenterImage = 'static_image';
-            break;
-          case 'top_right':
-            _selectedTopRightImage = 'static_image';
-            break;
-          case 'bottom':
-            _selectedBottomImage = 'static_image';
-            break;
-          case 'main':
-            _selectedMainImage = 'static_image';
-            break;
-        }
-      }
-    }
+    // Load static image paths using our enhanced loading method
+    await reloadStaticImagePaths();
     
-    // Also try to load from the map format for backward compatibility
-    final String? staticImagePathsJson = _prefs.getString('staticImagePaths');
-    if (staticImagePathsJson != null) {
-      try {
-        final Map<String, dynamic> decoded = json.decode(staticImagePathsJson);
-        decoded.forEach((key, value) {
-          if (_staticImagePaths[key] == null || _staticImagePaths[key]!.isEmpty) {
-            _staticImagePaths[key] = value as String;
-            // Also save with the new direct key format
-            if (value.isNotEmpty) {
-              _prefs.setString('static_image_direct_$key', value);
-            }
-          }
-        });
-      } catch (e) {
-        // Error handling
-      }
-    }
+    // Load video aspect ratios using our enhanced loading method
+    await reloadVideoAspectRatios();
     
-    // Load video aspect ratios directly from individual keys
-    for (var key in sectionKeys) {
-      // Try direct key first
-      double? directRatio = _prefs.getDouble('video_aspect_ratio_direct_$key');
-      
-      // If not found, try older key format for backward compatibility
-      directRatio ??= _prefs.getDouble('video_aspect_ratio_$key');
-      
-      if (directRatio != null) {
-        _videoAspectRatios[key] = directRatio;
-        
-        // Also save with the new direct key format to ensure future compatibility
-        _prefs.setDouble('video_aspect_ratio_direct_$key', directRatio);
-      }
-    }
+    // Load selected game indices
+    await loadSelectedGameIndices();
     
-    // Also try to load from the map format for backward compatibility
-    final String? videoAspectRatiosJson = _prefs.getString('videoAspectRatios');
-    if (videoAspectRatiosJson != null) {
-      try {
-        final Map<String, dynamic> decoded = json.decode(videoAspectRatiosJson);
-        decoded.forEach((key, value) {
-          if (_videoAspectRatios[key] == null) {
-            _videoAspectRatios[key] = double.parse(value.toString());
-            // Also save with the new direct key format
-            _prefs.setDouble('video_aspect_ratio_direct_$key', double.parse(value.toString()));
-          }
-        });
-      } catch (e) {
-        // Error handling
-      }
-    }
+    // Don't automatically set media types to static_image - let the user choose
+    // We'll still load the static image paths, but we won't override the saved media types
+    
+    // Load media types from saved preferences
+    _selectedLeftImage = _prefs.getString(_selectedLeftImageKey) ?? 'logo';
+    _selectedRightImage = _prefs.getString(_selectedRightImageKey) ?? 'logo';
+    _selectedTopImage = _prefs.getString(_selectedTopImageKey) ?? 'logo';
+    _selectedBottomImage = _prefs.getString(_selectedBottomImageKey) ?? 'logo';
+    _selectedMainImage = _prefs.getString(_selectedMainImageKey) ?? 'video';
+    _selectedTopLeftImage = _prefs.getString(_selectedTopLeftImageKey) ?? 'logo';
+    _selectedTopCenterImage = _prefs.getString(_selectedTopCenterImageKey) ?? 'logo';
+    _selectedTopRightImage = _prefs.getString(_selectedTopRightImageKey) ?? 'logo';
     
     // Load margin dimensions
     _leftMarginWidth = _prefs.getDouble(_leftMarginWidthKey) ?? 200;
@@ -431,13 +360,6 @@ class SettingsProvider extends ChangeNotifier {
     _topCenterWidth = _prefs.getDouble(_topCenterWidthKey) ?? 200;
     _topRightWidth = _prefs.getDouble(_topRightWidthKey) ?? 200;
     
-    // Load selected images
-    _selectedLeftImage = _prefs.getString(_selectedLeftImageKey) ?? 'logo';
-    _selectedBottomImage = _prefs.getString(_selectedBottomImageKey) ?? 'logo';
-    _selectedRightImage = _prefs.getString(_selectedRightImageKey) ?? 'logo';
-    _selectedTopImage = _prefs.getString(_selectedTopImageKey) ?? 'logo';
-    _selectedMainImage = _prefs.getString(_selectedMainImageKey) ?? 'video';
-
     // Initialize default ticker settings if not already set
     final String? showTickerJson = _prefs.getString(_showTickerKey);
     if (showTickerJson == null) {
@@ -498,17 +420,6 @@ class SettingsProvider extends ChangeNotifier {
         if (game.videoPath.isNotEmpty) _gameVideoPaths[game.name] = game.videoPath;
         if (game.bannerPath.isNotEmpty) _gameBannerPaths[game.name] = game.bannerPath;
       }
-    }
-
-    // Load selected images if not already set by static images
-    if (_selectedTopLeftImage.isEmpty) {
-      _selectedTopLeftImage = _prefs.getString(_selectedTopLeftImageKey) ?? 'logo';
-    }
-    if (_selectedTopCenterImage.isEmpty) {
-      _selectedTopCenterImage = _prefs.getString(_selectedTopCenterImageKey) ?? 'logo';
-    }
-    if (_selectedTopRightImage.isEmpty) {
-      _selectedTopRightImage = _prefs.getString(_selectedTopRightImageKey) ?? 'logo';
     }
 
     notifyListeners();
@@ -1078,25 +989,168 @@ class SettingsProvider extends ChangeNotifier {
 
   // Force save all static image paths directly to SharedPreferences
   Future<void> forceSaveStaticImagePaths() async {
+    // First save the entire map to a single key
+    await _prefs.setString('staticImagePaths', json.encode(_staticImagePaths));
+    
+    // Then also save each path individually for redundancy
     for (var entry in _staticImagePaths.entries) {
       if (entry.value.isNotEmpty) {
-        await _prefs.setString('static_image_direct_${entry.key}', entry.value);
+        final key = 'static_image_path_${entry.key}';
+        await _prefs.setString(key, entry.value);
+        
+        // Log the save for debugging
+        debugPrint('Saved static image path for ${entry.key}: ${entry.value}');
       }
     }
+  }
+  
+  // Method to reload all static image paths from SharedPreferences
+  Future<void> reloadStaticImagePaths() async {
+    // Clear current paths
+    _staticImagePaths.clear();
+    
+    // Try loading from the main map first
+    final String? staticImagePathsJson = _prefs.getString('staticImagePaths');
+    if (staticImagePathsJson != null) {
+      try {
+        final Map<String, dynamic> decoded = json.decode(staticImagePathsJson);
+        decoded.forEach((key, value) {
+          if (value != null && value.isNotEmpty) {
+            _staticImagePaths[key] = value as String;
+            debugPrint('Loaded static image for $key from main map: $value');
+          }
+        });
+      } catch (e) {
+        debugPrint('Error loading static image paths from main map: $e');
+      }
+    }
+    
+    // Also try loading individual paths (these will override the main map if they exist)
+    for (final key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
+      final individualPath = _prefs.getString('static_image_path_$key');
+      if (individualPath != null && individualPath.isNotEmpty) {
+        _staticImagePaths[key] = individualPath;
+        debugPrint('Loaded static image for $key from individual key: $individualPath');
+      }
+    }
+    
+    // Notify listeners after reloading
+    notifyListeners();
+  }
+  
+  // Method to reload all video aspect ratios from SharedPreferences
+  Future<void> reloadVideoAspectRatios() async {
+    // Clear current aspect ratios
+    _videoAspectRatios.clear();
+    
+    // Try loading from the main map first
+    final String? videoAspectRatiosJson = _prefs.getString('videoAspectRatios');
+    if (videoAspectRatiosJson != null) {
+      try {
+        final Map<String, dynamic> decoded = json.decode(videoAspectRatiosJson);
+        decoded.forEach((key, value) {
+          if (value != null) {
+            _videoAspectRatios[key] = double.parse(value.toString());
+            debugPrint('Loaded video aspect ratio for $key from main map: $value');
+          }
+        });
+      } catch (e) {
+        debugPrint('Error loading video aspect ratios from main map: $e');
+      }
+    }
+    
+    // Also try loading individual aspect ratios (these will override the main map if they exist)
+    for (final key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
+      double? directRatio = _prefs.getDouble('video_aspect_ratio_$key');
+      if (directRatio != null) {
+        _videoAspectRatios[key] = directRatio;
+        debugPrint('Loaded video aspect ratio for $key from individual key: $directRatio');
+      }
+    }
+    
+    // Notify listeners after reloading
+    notifyListeners();
   }
 
   // Force save all video aspect ratios directly to SharedPreferences
   Future<void> forceSaveVideoAspectRatios() async {
+    // First save the entire map to a single key
+    await _prefs.setString('videoAspectRatios', json.encode(_videoAspectRatios));
+    
+    // Then also save each ratio individually for redundancy
     for (var entry in _videoAspectRatios.entries) {
-      await _prefs.setDouble('video_aspect_ratio_direct_${entry.key}', entry.value);
+      final key = 'video_aspect_ratio_${entry.key}';
+      await _prefs.setDouble(key, entry.value);
+      
+      // Log the save for debugging
+      debugPrint('Saved video aspect ratio for ${entry.key}: ${entry.value}');
     }
   }
 
   // Force an immediate save of all settings to SharedPreferences
   Future<void> forceSave() async {
+    debugPrint('Forcing save of all settings');
     await _saveData();
     await forceSaveStaticImagePaths();
     await forceSaveVideoAspectRatios();
+    debugPrint('All settings saved');
+  }
+
+  // Add map to store selected game indices for each section
+  final Map<String, int> _selectedGameIndices = {};
+  
+  // Get selected game index for a section
+  int getSelectedGameIndex(String sectionKey) {
+    return _selectedGameIndices[sectionKey] ?? 0;
+  }
+  
+  // Set selected game index for a section
+  void setSelectedGameIndex(String sectionKey, int index) {
+    debugPrint('Setting selected game index for $sectionKey to $index');
+    
+    // Ensure valid index
+    if (index < 0 || (games.isNotEmpty && index >= games.length)) {
+      debugPrint('Invalid game index: $index, using 0 instead');
+      index = 0;
+    }
+    
+    _selectedGameIndices[sectionKey] = index;
+    
+    // Save directly to SharedPreferences for immediate persistence
+    _saveSelectedGameIndexDirectly(sectionKey, index);
+    
+    // Notify listeners
+    notifyListeners();
+  }
+  
+  // Save selected game index directly to SharedPreferences
+  Future<void> _saveSelectedGameIndexDirectly(String sectionKey, int index) async {
+    final key = 'selected_game_index_$sectionKey';
+    await _prefs.setInt(key, index);
+    debugPrint('Saved selected game index for $sectionKey: $index');
+  }
+  
+  // Load selected game indices from SharedPreferences
+  Future<void> loadSelectedGameIndices() async {
+    _selectedGameIndices.clear();
+    
+    // Load indices for all possible sections
+    for (final key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
+      final index = _prefs.getInt('selected_game_index_$key');
+      if (index != null) {
+        _selectedGameIndices[key] = index;
+        debugPrint('Loaded selected game index for $key: $index');
+      }
+    }
+  }
+
+  // Helper methods to get alignment and background color for sections
+  Alignment getAlignmentForSection(String sectionKey) {
+    return _alignmentMap[sectionKey] ?? Alignment.center;
+  }
+  
+  Color getBackgroundColorForSection(String sectionKey) {
+    return _backgroundColorMap[sectionKey] ?? Colors.black45;
   }
 }
 

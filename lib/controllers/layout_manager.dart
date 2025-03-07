@@ -59,107 +59,25 @@ class LayoutManager {
         selectedMainImage = settingsProvider.selectedMainImage.isEmpty
             ? 'banner'
             : settingsProvider.selectedMainImage {
-    // After assigning the initial values, check if there's a static image path
-    // for each section. If so, set the media type to "static_image"
-    for (var key in [
-      'left',
-      'right',
-      'top',
-      'bottom',
-      'main',
-      'top_left',
-      'top_center',
-      'top_right'
-    ]) {
-      final path = settingsProvider.getStaticImagePath(key);
-      if (path != null && path.isNotEmpty) {
-        switch (key) {
-          case 'left':
-            selectedLeftImage = 'static_image';
-            break;
-          case 'right':
-            selectedRightImage = 'static_image';
-            break;
-          case 'top':
-            selectedTopImage = 'static_image';
-            break;
-          case 'bottom':
-            selectedBottomImage = 'static_image';
-            break;
-          case 'main':
-            selectedMainImage = 'static_image';
-            break;
-          case 'top_left':
-            selectedTopLeftImage = 'static_image';
-            break;
-          case 'top_center':
-            selectedTopCenterImage = 'static_image';
-            break;
-          case 'top_right':
-            selectedTopRightImage = 'static_image';
-            break;
-        }
-      }
-    }
-
-    // Check consistency between static image paths and media types
+    // Don't automatically set media types to static_image just because paths exist
+    // Let the user explicitly choose media types
+    
+    // Log the initial media types loaded from settings
+    print("Initial media types from settings:");
+    print("Left: $selectedLeftImage");
+    print("Right: $selectedRightImage");
+    print("Top: $selectedTopImage");
+    print("Bottom: $selectedBottomImage");
+    print("Main: $selectedMainImage");
+    print("Top Left: $selectedTopLeftImage");
+    print("Top Center: $selectedTopCenterImage");
+    print("Top Right: $selectedTopRightImage");
+    
+    // Log static image paths without changing media types
     for (var key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
       final path = settingsProvider.getStaticImagePath(key);
-      var mediaType = '';
-      switch (key) {
-        case 'left':
-          mediaType = selectedLeftImage;
-          break;
-        case 'right':
-          mediaType = selectedRightImage;
-          break;
-        case 'top':
-          mediaType = selectedTopImage;
-          break;
-        case 'top_left':
-          mediaType = selectedTopLeftImage;
-          break;
-        case 'top_center':
-          mediaType = selectedTopCenterImage;
-          break;
-        case 'top_right':
-          mediaType = selectedTopRightImage;
-          break;
-        case 'bottom':
-          mediaType = selectedBottomImage;
-          break;
-        case 'main':
-          mediaType = selectedMainImage;
-          break;
-      }
-      if (path != null && path.isNotEmpty && mediaType != 'static_image') {
-        // Auto-correct the issue
-        switch (key) {
-          case 'left':
-            selectedLeftImage = 'static_image';
-            break;
-          case 'right':
-            selectedRightImage = 'static_image';
-            break;
-          case 'top':
-            selectedTopImage = 'static_image';
-            break;
-          case 'top_left':
-            selectedTopLeftImage = 'static_image';
-            break;
-          case 'top_center':
-            selectedTopCenterImage = 'static_image';
-            break;
-          case 'top_right':
-            selectedTopRightImage = 'static_image';
-            break;
-          case 'bottom':
-            selectedBottomImage = 'static_image';
-            break;
-          case 'main':
-            selectedMainImage = 'static_image';
-            break;
-        }
+      if (path != null && path.isNotEmpty) {
+        print("Static image path for $key: $path");
       }
     }
   }
@@ -330,35 +248,92 @@ class LayoutManager {
 
   // Update media type for a specific section
   void updateSectionMediaType(String sectionKey, String mediaType) {
+    print('LayoutManager: Updating media type for $sectionKey to $mediaType');
+    
+    // Get current media type to check if we're switching from static_image
+    String currentMediaType = '';
     switch (sectionKey) {
       case 'left':
+        currentMediaType = selectedLeftImage;
         selectedLeftImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedLeftImage: mediaType);
         break;
       case 'right':
+        currentMediaType = selectedRightImage;
         selectedRightImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedRightImage: mediaType);
         break;
       case 'top':
+        currentMediaType = selectedTopImage;
         selectedTopImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedTopImage: mediaType);
         break;
       case 'top_left':
+        currentMediaType = selectedTopLeftImage;
         selectedTopLeftImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedTopLeftImage: mediaType);
         break;
       case 'top_center':
+        currentMediaType = selectedTopCenterImage;
         selectedTopCenterImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedTopCenterImage: mediaType);
         break;
       case 'top_right':
+        currentMediaType = selectedTopRightImage;
         selectedTopRightImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedTopRightImage: mediaType);
         break;
       case 'bottom':
+        currentMediaType = selectedBottomImage;
         selectedBottomImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedBottomImage: mediaType);
         break;
       case 'main':
+        currentMediaType = selectedMainImage;
         selectedMainImage = mediaType;
+        // Use saveLayoutPreferences instead of direct assignment
+        settingsProvider.saveLayoutPreferences(selectedMainImage: mediaType);
         break;
     }
 
-    // Notify listeners (save will happen when exiting edit mode)
+    // If switching from static_image to another type, clear the path
+    if (currentMediaType == 'static_image' && mediaType != 'static_image') {
+      print('Clearing static image path for $sectionKey when switching media type from static_image to $mediaType');
+      settingsProvider.clearStaticImagePath(sectionKey);
+    }
+
+    // Force an immediate save to ensure changes are persisted
+    settingsProvider.forceSave();
+    
+    // Debug print to verify correct values in the settings provider
+    print('After update in LayoutManager:');
+    print('- Media type in LayoutManager for $sectionKey: $mediaType');
+    print('- Media type in SettingsProvider for $sectionKey: ${_getSettingsProviderMediaType(sectionKey)}');
+    
+    // Notify listeners to update the UI
     settingsProvider.notifyListeners();
+  }
+  
+  // Helper method to get the current media type from SettingsProvider based on section key
+  String _getSettingsProviderMediaType(String sectionKey) {
+    switch (sectionKey) {
+      case 'left': return settingsProvider.selectedLeftImage;
+      case 'right': return settingsProvider.selectedRightImage;
+      case 'top': return settingsProvider.selectedTopImage;
+      case 'top_left': return settingsProvider.selectedTopLeftImage;
+      case 'top_center': return settingsProvider.selectedTopCenterImage;
+      case 'top_right': return settingsProvider.selectedTopRightImage;
+      case 'bottom': return settingsProvider.selectedBottomImage;
+      case 'main': return settingsProvider.selectedMainImage;
+      default: return 'unknown';
+    }
   }
 
   // Save all layout preferences
@@ -414,6 +389,16 @@ class LayoutManager {
   void saveAllLayoutSettings() {
     print("Saving all layout settings to persistent storage");
     
+    // Get the most up-to-date media types from the SettingsProvider
+    selectedLeftImage = settingsProvider.selectedLeftImage;
+    selectedRightImage = settingsProvider.selectedRightImage;
+    selectedTopImage = settingsProvider.selectedTopImage;
+    selectedBottomImage = settingsProvider.selectedBottomImage;
+    selectedMainImage = settingsProvider.selectedMainImage;
+    selectedTopLeftImage = settingsProvider.selectedTopLeftImage;
+    selectedTopCenterImage = settingsProvider.selectedTopCenterImage;
+    selectedTopRightImage = settingsProvider.selectedTopRightImage;
+    
     // Print debug information about media types being saved
     print("Saving media types:");
     print("Left: $selectedLeftImage");
@@ -425,7 +410,13 @@ class LayoutManager {
     print("Top Center: $selectedTopCenterImage");
     print("Top Right: $selectedTopRightImage");
     
-    // Print static image paths being saved
+    // Print static image paths but don't automatically change media types
+    for (var key in ['left', 'right', 'top', 'bottom', 'main', 'top_left', 'top_center', 'top_right']) {
+      final path = settingsProvider.getStaticImagePath(key);
+      if (path != null && path.isNotEmpty) {
+        print("Static image for $key: $path");
+      }
+    }
     
     // Ensure we have the latest data from settings provider where needed
     final currentIsCarouselMap = settingsProvider.isCarouselMap;
@@ -462,7 +453,5 @@ class LayoutManager {
     
     // Force an immediate save to SharedPreferences
     settingsProvider.forceSave();
-    
-    // Print confirmation
   }
 }
