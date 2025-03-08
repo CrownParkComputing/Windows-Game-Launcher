@@ -6,6 +6,11 @@ import '../settings_provider.dart';
 import 'spinning_disc.dart';
 import '../models/game_config.dart';
 import 'carousel_video_player.dart';
+import 'package:file_picker/file_picker.dart';
+import '../utils/logger.dart';
+import '../utils/static_image_manager.dart';
+import 'static_image_widget.dart';
+import 'transparent_widget.dart';
 
 enum ResizeDirection {
   topLeft,
@@ -120,7 +125,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     
     // Log changes that affect game selection or media display
     if (oldWidget.selectedIndex != widget.selectedIndex) {
-      debugPrint('SELECTION CHANGED in ${widget.sectionKey}: ${oldWidget.selectedIndex} -> ${widget.selectedIndex}');
+      Logger.debug('SELECTION CHANGED in ${widget.sectionKey}: ${oldWidget.selectedIndex} -> ${widget.selectedIndex}', source: 'GameCarousel');
       
       _loadStoryText();
       // Reset animation when text changes
@@ -136,13 +141,33 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     }
     
     if (oldWidget.mediaType != widget.mediaType) {
-      debugPrint('MEDIA TYPE CHANGED in ${widget.sectionKey}: ${oldWidget.mediaType} -> ${widget.mediaType}');
+      Logger.debug('MEDIA TYPE CHANGED in ${widget.sectionKey}: ${oldWidget.mediaType} -> ${widget.mediaType}', source: 'GameCarousel');
       _loadStoryText(); // Also reload story text on media type change
     }
   }
 
   String _getMediaPath(GameConfig game, String type) {
     final mediaFolder = widget.settingsProvider.effectiveMediaFolderPath;
+    
+    // Special handling for static_image type
+    if (type == 'static_image') {
+      // Get the static image path from settings provider
+      final staticPath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
+      if (staticPath != null && staticPath.isNotEmpty) {
+        return staticPath;
+      }
+      // If no image is selected, return a path that will trigger the missing media placeholder
+      return '$mediaFolder/static_images/no_image_selected';
+    }
+    
+    // If the type is a directory that exists, use that directly
+    final typeDir = Directory('$mediaFolder/$type');
+    if (typeDir.existsSync()) {
+      // For standard media types, use game name with appropriate extension
+      return '$mediaFolder/$type/${game.name}.${_getMediaExtension(type)}';
+    }
+    
+    // Fallback to traditional mapping for backward compatibility
     switch (type) {
       case 'logo':
         return '$mediaFolder/logo/${game.name}.png';
@@ -159,51 +184,26 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
       case 'medium_disc':
         return '$mediaFolder/medium_disc/${game.name}.png';
       default:
-        return '';
+        return '$mediaFolder/$type/${game.name}.png'; // Default to PNG for unknown types
+    }
+  }
+  
+  // Helper to get the appropriate file extension based on media type
+  String _getMediaExtension(String type) {
+    switch (type) {
+      case 'video':
+        return 'mp4';
+      case 'story':
+        return 'txt';
+      case 'fanart':
+        return 'jpg';
+      default:
+        return 'png'; // Default to PNG for most image types
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Special handling for static_image
-    if (widget.mediaType == 'static_image') {
-      final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-      
-      if (staticImagePath != null) {
-        final file = File(staticImagePath);
-        final exists = file.existsSync();
-        if (!exists) {
-          return Center(
-            child: Container(
-              color: widget.backgroundColor,
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.broken_image,
-                    size: 64,
-                    color: Colors.white,
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'Image not found',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-      } else {
-        // No static image path set
-      }
-    }
-    
     // Wrap everything in a RawKeyboardListener to handle keyboard navigation
     return Focus(
       autofocus: true,
@@ -236,42 +236,6 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
           final shouldUseCarousel = widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? widget.isCarousel;
           final bool isStaticImage = !shouldUseCarousel;
 
-          // Special handling for static_image media type
-          if (widget.mediaType == 'static_image') {
-            final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-            
-            return Stack(
-              children: [
-                Container(
-                  width: effectiveWidth,
-                  height: effectiveHeight,
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: widget.backgroundColor,
-                  ),
-                  child: Column(
-                    children: [
-                      // Add ticker at top if alignment is 'top'
-                      if (showTicker && (widget.settingsProvider.tickerAlignment[widget.sectionKey] ?? 'bottom') == 'top')
-                        _buildTicker(),
-                        
-                      // Main content with adjusted height
-                      Expanded(
-                        child: widget.isEditMode
-                          ? _buildEditModePlaceholder(contentHeight, itemWidth)
-                          : _buildStaticImageView(contentHeight, effectiveWidth, staticImagePath),
-                      ),
-                      
-                      // Add ticker at bottom if alignment is 'bottom'
-                      if (showTicker && (widget.settingsProvider.tickerAlignment[widget.sectionKey] ?? 'bottom') == 'bottom')
-                        _buildTicker(),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          }
-
           return Stack(
             children: [
               Container(
@@ -279,7 +243,8 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
                 height: effectiveHeight,
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: widget.backgroundColor,
+                  color: widget.isEditMode ? widget.backgroundColor : Colors.transparent,
+                  borderRadius: widget.isEditMode ? BorderRadius.circular(4) : null,
                 ),
                 child: Column(
                   children: [
@@ -414,19 +379,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     final isCarouselMode = widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? widget.isCarousel;
     
     // Get display text for media type
-    String mediaTypeDisplay = widget.mediaType;
-    if (widget.mediaType == 'static_image') {
-      final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-      if (staticImagePath != null) {
-        // Extract just the filename from the path
-        final fileName = staticImagePath.split(Platform.pathSeparator).last;
-        mediaTypeDisplay = "STATIC IMAGE: $fileName";
-      } else {
-        mediaTypeDisplay = "STATIC IMAGE";
-      }
-    } else {
-      mediaTypeDisplay = widget.mediaType.replaceAll('_', ' ').toUpperCase();
-    }
+    String mediaTypeDisplay = widget.mediaType.replaceAll('_', ' ').toUpperCase();
 
     return Stack(
       children: [
@@ -582,10 +535,9 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
         return Icons.article;
       case 'medium_disc':
         return Icons.album;
-      case 'static_image':
-        return Icons.photo_library;
       default:
-        return Icons.help_outline;
+        // Default icon for any other folder type
+        return Icons.folder;
     }
   }
 
@@ -617,7 +569,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
   Widget _buildCarouselView(double height, double width) {
     if (widget.games.isEmpty) return const SizedBox.shrink();
     
-    debugPrint('Building carousel view for section ${widget.sectionKey}: selected=${widget.selectedIndex}');
+    Logger.debug('Building carousel view for section ${widget.sectionKey}: selected=${widget.selectedIndex}', source: 'GameCarousel');
 
     // Get the number of items to show from settings
     final numItemsToShow = widget.settingsProvider.carouselItemCount[widget.sectionKey] ?? 
@@ -841,7 +793,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     
     return GestureDetector(
       onTap: () {
-        debugPrint('Carousel item tapped: section=${widget.sectionKey}, index=$index');
+        Logger.debug('Carousel item tapped: section=${widget.sectionKey}, index=$index', source: 'GameCarousel');
         if (widget.onGameSelected != null) {
           widget.onGameSelected!(index);
           
@@ -935,6 +887,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
         width: effectiveWidth,
         height: effectiveHeight,
         alignment: Alignment.center,
+        // No background color specified - will be transparent
         child: _buildGameItem(
             selectedGame, effectiveHeight, effectiveWidth, true),
       ),
@@ -944,47 +897,56 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
   // Centralized method to check if media exists for a game
   bool _doesMediaExist(GameConfig game, String mediaType) {
     if (mediaType == 'story') return true; // Story is handled differently
-    if (mediaType == 'static_image') return true; // Static image has its own handler
     
     final String path = _getMediaPath(game, mediaType);
     final bool exists = File(path).existsSync();
     
     // Log media status for debugging
-    debugPrint('MEDIA CHECK: Game=${game.name}, Type=$mediaType, Section=${widget.sectionKey}, Path=$path, Exists=$exists');
+    Logger.debug('MEDIA CHECK: Game=${game.name}, Type=$mediaType, Section=${widget.sectionKey}, Path=$path, Exists=$exists', source: 'GameCarousel');
     
     return exists;
   }
 
   // Helper to build the game item with consistency for all sections
   Widget _buildGameItem(GameConfig game, double height, double width, bool isSelected) {
+    // Handle special widget types
+    if (widget.mediaType == SettingsProvider.staticImageWidgetType) {
+      return StaticImageWidget(
+        width: width,
+        height: height,
+        sectionKey: widget.sectionKey,
+        isEditMode: widget.isEditMode,
+        settingsProvider: widget.settingsProvider,
+      );
+    }
+    
+    if (widget.mediaType == SettingsProvider.transparentWidgetType) {
+      return TransparentWidget(
+        width: width,
+        height: height,
+        isEditMode: widget.isEditMode,
+        settingsProvider: widget.settingsProvider,
+      );
+    }
+    
+    // Special handling for static_image type
+    if (widget.mediaType == 'static_image') {
+      return _buildStaticImageItem(height, width);
+    }
+    
     // First check if media exists (consistent check for all types)
     final bool mediaExists = _doesMediaExist(game, widget.mediaType);
     
-    // If media doesn't exist, show the missing media placeholder regardless of type
-    if (!mediaExists && widget.mediaType != 'static_image') {
+    // If media doesn't exist, show the missing media placeholder
+    if (!mediaExists) {
       return _buildMissingMediaPlaceholder(game, height, width);
     }
     
     // Handle specific media types
     switch (widget.mediaType) {
-      case 'static_image':
-        final staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-        return _buildStaticImageInGameItem(game, height, width, staticImagePath, isSelected);
-        
       case 'video':
         if (mediaExists) {
-          final String videoPath = _getMediaPath(game, 'video');
-          final aspectRatio = widget.settingsProvider.getVideoAspectRatio(widget.sectionKey) ?? 16/9;
-          
-          double videoWidth = width;
-          double videoHeight = videoWidth / aspectRatio;
-          
-          if (videoHeight > height) {
-            videoHeight = height;
-            videoWidth = videoHeight * aspectRatio;
-          }
-          
-          return _buildCarouselVideoPlayer(game, videoWidth, videoHeight, isSelected);
+          return _buildVideoItem(game, height, width);
         } else {
           return _buildMissingMediaPlaceholder(game, height, width);
         }
@@ -1004,7 +966,6 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
               File(mediaPath),
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
-                debugPrint('Error loading image: $error');
                 return _buildErrorPlaceholder(game, height, width);
               },
             ),
@@ -1015,171 +976,74 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     }
   }
 
-  Widget _buildStaticImageInGameItem(GameConfig game, double height, double width, String? staticImagePath, bool isSelected) {
-    if (staticImagePath == null) {
-      return Container(
-        width: width,
-        height: height,
-        alignment: Alignment.center,
-        color: widget.backgroundColor,
-        child: const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.image,
-              size: 64,
-              color: Colors.white,
-            ),
-            SizedBox(height: 12),
-            Text(
-              'No static image selected',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
+  // Helper method for building video items
+  Widget _buildVideoItem(GameConfig game, double height, double width) {
+    // Get the video path
+    final String videoPath = _getMediaPath(game, 'video');
+    
+    // Get or use default aspect ratio
+    final aspectRatio = widget.settingsProvider.getVideoAspectRatio(widget.sectionKey) ?? 16/9;
+    
+    // Calculate dimensions to fill the space while maintaining aspect ratio
+    double videoWidth = width;
+    double videoHeight = videoWidth / aspectRatio;
+    
+    if (videoHeight > height) {
+      videoHeight = height;
+      videoWidth = videoHeight * aspectRatio;
     }
     
-    final file = File(staticImagePath);
-    final exists = file.existsSync();
-    
-    // Log static image status for debugging
-    debugPrint('Static image in ${widget.sectionKey}: path=$staticImagePath, exists=$exists');
-    
-    if (!exists) {
-      return Container(
-        width: width,
-        height: height,
-        alignment: Alignment.center,
-        color: widget.backgroundColor,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.broken_image,
-              size: 64,
-              color: Colors.white,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Image not found',
+    return _buildCarouselVideoPlayer(game, videoWidth, videoHeight, true);
+  }
+  
+  // Helper method for errors loading images
+  Widget _buildErrorPlaceholder(GameConfig game, double height, double width) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.red.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.broken_image,
+            size: 36,
+            color: Colors.red.withOpacity(0.8),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              game.name,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: Colors.white.withOpacity(0.7),
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              staticImagePath,
-              style: const TextStyle(
-                color: Colors.white60,
-                fontSize: 10,
-                fontWeight: FontWeight.w400,
-              ),
-              textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ),
-      );
-    }
-    
-    try {
-      // Save the path again to ensure it persists correctly
-      widget.settingsProvider.setStaticImagePath(widget.sectionKey, staticImagePath);
-      
-      return Container(
-        width: width,
-        height: height,
-        alignment: Alignment.center,
-        child: Image.file(
-          file,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            debugPrint('Error loading static image: $error');
-            return Container(
-              color: widget.backgroundColor,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Error loading image',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    error.toString(),
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
-    } catch (e) {
-      return Container(
-        color: widget.backgroundColor,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Error loading ${widget.mediaType.replaceAll('_', ' ')}',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.red.withOpacity(0.7),
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Exception loading image',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              e.toString(),
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.w400,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      );
-    }
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCarouselVideoPlayer(GameConfig game, double width, double height, bool isSelected) {
@@ -1214,6 +1078,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
                 color: widget.isEditMode ? Colors.blue.withOpacity(0.7) : Colors.transparent,
                 width: widget.isEditMode ? 2 : 0,
               ),
+              // No background color or shadow in regular mode
               boxShadow: widget.isEditMode ? [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.5),
@@ -1226,10 +1091,13 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
             child: Stack(
               children: [
                 // Video player
-                CarouselVideoPlayer(
-                  videoPath: game.videoPath,
-                  width: videoWidth,
-                  height: videoHeight,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: CarouselVideoPlayer(
+                    videoPath: game.videoPath,
+                    width: videoWidth,
+                    height: videoHeight,
+                  ),
                 ),
                 
                 // Semi-transparent overlay to indicate edit mode
@@ -1602,7 +1470,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
   void _onLeftArrowPressed() {
     if (widget.games.isEmpty) return;
     
-    debugPrint('Left arrow pressed in ${widget.sectionKey} carousel');
+    Logger.debug('Left arrow pressed in ${widget.sectionKey} carousel', source: 'GameCarousel');
     
     // Update the selected index with wraparound
     int newIndex;
@@ -1612,7 +1480,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
       newIndex = widget.games.length - 1;
     }
     
-    debugPrint('Changing selection from ${widget.selectedIndex} to $newIndex');
+    Logger.debug('Changing selection from ${widget.selectedIndex} to $newIndex', source: 'GameCarousel');
     
     // Play selection animation
     _playSelectionAnimation();
@@ -1626,7 +1494,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
         if (mounted) {
           setState(() {
             // This empty setState forces a rebuild
-            debugPrint('Forcing rebuild after left arrow press');
+            Logger.debug('Forcing rebuild after left arrow press', source: 'GameCarousel');
           });
         }
       });
@@ -1637,7 +1505,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
   void _onRightArrowPressed() {
     if (widget.games.isEmpty) return;
     
-    debugPrint('Right arrow pressed in ${widget.sectionKey} carousel');
+    Logger.debug('Right arrow pressed in ${widget.sectionKey} carousel', source: 'GameCarousel');
     
     // Update the selected index with wraparound
     int newIndex;
@@ -1647,7 +1515,7 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
       newIndex = 0;
     }
     
-    debugPrint('Changing selection from ${widget.selectedIndex} to $newIndex');
+    Logger.debug('Changing selection from ${widget.selectedIndex} to $newIndex', source: 'GameCarousel');
     
     // Play selection animation
     _playSelectionAnimation();
@@ -1661,173 +1529,17 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
         if (mounted) {
           setState(() {
             // This empty setState forces a rebuild
-            debugPrint('Forcing rebuild after right arrow press');
+            Logger.debug('Forcing rebuild after right arrow press', source: 'GameCarousel');
           });
         }
       });
     }
   }
 
-  // Helper method to build a static image view
-  Widget _buildStaticImageView(double effectiveHeight, double effectiveWidth, String? staticImagePath) {
-    if (staticImagePath == null) {
-      return Center(
-        child: Container(
-          color: widget.backgroundColor,
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.image,
-                size: 64,
-                color: Colors.white,
-              ),
-              SizedBox(height: 12),
-              Text(
-                'No static image selected',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    
-    final file = File(staticImagePath);
-    final exists = file.existsSync();
-    
-    if (!exists) {
-      return Center(
-        child: Container(
-          color: widget.backgroundColor,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.broken_image,
-                size: 64,
-                color: Colors.white,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Image not found',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                staticImagePath,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w400,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    try {
-      return Center(
-        child: Image.file(
-          file,
-          fit: BoxFit.contain,
-          width: effectiveWidth,
-          height: effectiveHeight,
-          errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: Container(
-                color: widget.backgroundColor,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Colors.red,
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Error loading image',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      error.toString(),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      );
-    } catch (e) {
-      return Center(
-        child: Container(
-          color: widget.backgroundColor,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.red,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Exception loading image',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                e.toString(),
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w400,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+  // Play the selection animation
+  void _playSelectionAnimation() {
+    _selectionAnimationController.reset();
+    _selectionAnimationController.forward();
   }
 
   // Helper method to build a game cover item
@@ -1835,11 +1547,11 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     String mediaPath = _getMediaPath(game, widget.mediaType);
     
     // Debug output to help diagnose issues
-    debugPrint('Building cover for game: ${game.name}, media type: ${widget.mediaType}, section: ${widget.sectionKey}, path exists: ${File(mediaPath).existsSync()}');
+    Logger.debug('Building cover for game: ${game.name}, media type: ${widget.mediaType}, section: ${widget.sectionKey}, path exists: ${File(mediaPath).existsSync()}', source: 'GameCarousel');
     
     // Skip file existence check for story
     if (!File(mediaPath).existsSync() && widget.mediaType != 'story') {
-      debugPrint('Showing N/A for ${game.name} in section ${widget.sectionKey} with media type ${widget.mediaType}');
+      Logger.debug('Showing N/A for ${game.name} in section ${widget.sectionKey} with media type ${widget.mediaType}', source: 'GameCarousel');
       return _buildMissingMediaPlaceholder(game, height, width);
     }
 
@@ -1850,122 +1562,185 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
           height: height,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.black54,
+            color: Colors.black87, // Keep this background to ensure text is readable
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Colors.grey.withOpacity(0.2),
+              width: 1,
+            ),
           ),
           child: SingleChildScrollView(
             child: Text(
-              game.storyText.isEmpty 
-                ? 'No story text available'
-                : widget.settingsProvider.extractStoryText(game.storyText),
-              style: const TextStyle(color: Colors.white),
+              widget.settingsProvider.extractStoryText(game.storyText),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                height: 1.5,
+              ),
             ),
           ),
         );
-      case 'medium_disc':
-        return SizedBox(
-          width: width,
-          height: height,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Title section with flexible height
-              Expanded(
-                flex: 1,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      game.name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
-                    ),
-                  ),
-                ),
-              ),
-              // Disc section with fixed size
-              SizedBox(
-                width: width,
-                height: width,
-                child: ClipOval(
-                  child: SpinningDisc(
-                    imagePath: mediaPath,
-                    size: width,
-                  ),
-                ),
-              ),
-              // Bottom padding space
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
+        
+      case 'video':
+        // For video, use a transparent background and let the video player handle the display
+        return _buildVideoItem(game, height, width);
+        
       default:
-        debugPrint('Displaying image for ${game.name} from path: $mediaPath');
+        // For images, ensure they have a proper background for visibility
         return Container(
           width: width,
           height: height,
-          alignment: Alignment.center,
-          child: Image.file(
-            File(mediaPath),
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              // If image fails to load, show N/A with error
-              debugPrint('Error loading image for ${game.name}: $error');
-              return _buildErrorPlaceholder(game, height, width);
-            },
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.black45 : Colors.black38, // Light background for images
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? Colors.white.withOpacity(0.3) : Colors.transparent,
+              width: isSelected ? 2 : 0,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.file(
+              File(mediaPath),
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                Logger.debug('Error loading image for ${game.name}: $error', source: 'GameCarousel');
+                return _buildErrorPlaceholder(game, height, width);
+              },
+            ),
           ),
         );
     }
   }
 
-  // Create a dedicated method for the missing media placeholder
+  // Helper method to build placeholder for missing media
   Widget _buildMissingMediaPlaceholder(GameConfig game, double height, double width) {
-    debugPrint('Building missing media placeholder for ${game.name} in ${widget.sectionKey}');
+    Logger.debug('Building missing media placeholder for ${game.name} in ${widget.sectionKey}', source: 'GameCarousel');
     
     return Container(
       width: width,
       height: height,
-      alignment: Alignment.center,
-      color: widget.backgroundColor,
+      decoration: BoxDecoration(
+        color: Colors.black54, // Keep a background for the placeholder
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             _getMediaTypeIcon(),
-            size: math.min(64, height * 0.3),
-            color: Colors.white,
+            size: 36,
+            color: Colors.white.withOpacity(0.7),
           ),
-          SizedBox(height: math.min(12, height * 0.05)),
-          Text(
-            'N/A',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: math.min(28, height * 0.1),
-              fontWeight: FontWeight.bold,
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              game.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          SizedBox(height: math.min(12, height * 0.05)),
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text(
-                'No ${widget.mediaType.replaceAll('_', ' ')} for "${game.name}"',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: math.min(14, height * 0.06),
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
+          const SizedBox(height: 8),
+          Text(
+            'No ${widget.mediaType.replaceAll('_', ' ')} available',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // New method to build a static image item
+  Widget _buildStaticImageItem(double height, double width) {
+    final GameConfig dummyGame = GameConfig(
+      name: '',
+      executablePath: '',
+      logoPath: '',
+      videoPath: '',
+      storyText: '',
+      bannerPath: '',
+    );
+    
+    final String staticImagePath = _getMediaPath(
+      widget.games.isNotEmpty ? widget.games[0] : dummyGame, 
+      'static_image'
+    );
+    
+    final bool imageExists = File(staticImagePath).existsSync();
+    
+    if (imageExists) {
+      return Container(
+        width: width,
+        height: height,
+        alignment: Alignment.center,
+        // No background color specified - will be transparent
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.file(
+            File(staticImagePath),
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildStaticImageErrorPlaceholder(height, width);
+            },
+          ),
+        ),
+      );
+    } else {
+      return _buildStaticImageMissingPlaceholder(height, width);
+    }
+  }
+  
+  // Placeholder for missing static images
+  Widget _buildStaticImageMissingPlaceholder(double height, double width) {
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.black54, // Keep a background for the placeholder to be visible
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.image,
+            size: 64,
+            color: Colors.white70,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'No static image selected',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => _selectStaticImage(),
+            child: Text('Select Image'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
             ),
           ),
         ],
@@ -1973,57 +1748,70 @@ class _GameCarouselState extends State<GameCarousel> with TickerProviderStateMix
     );
   }
   
-  // Create a dedicated method for error placeholder
-  Widget _buildErrorPlaceholder(GameConfig game, double height, double width) {
+  // Placeholder for static image loading errors
+  Widget _buildStaticImageErrorPlaceholder(double height, double width) {
     return Container(
       width: width,
       height: height,
       alignment: Alignment.center,
-      color: widget.backgroundColor,
+      decoration: BoxDecoration(
+        color: Colors.black54, // Keep a background for the error placeholder to be visible
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.red.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _getMediaTypeIcon(),
-            size: math.min(64, height * 0.3),
+            Icons.broken_image,
+            size: 64,
             color: Colors.red,
           ),
-          SizedBox(height: math.min(12, height * 0.05)),
+          SizedBox(height: 16),
           Text(
-            'Error',
+            'Error loading static image',
             style: TextStyle(
               color: Colors.white,
-              fontSize: math.min(28, height * 0.1),
+              fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
+            textAlign: TextAlign.center,
           ),
-          SizedBox(height: math.min(12, height * 0.05)),
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text(
-                'Failed to load ${widget.mediaType.replaceAll('_', ' ')}',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: math.min(14, height * 0.06),
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
+          SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => _selectStaticImage(),
+            child: Text('Select New Image'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
             ),
           ),
         ],
       ),
     );
   }
-
-  // Play the selection animation
-  void _playSelectionAnimation() {
-    _selectionAnimationController.reset();
-    _selectionAnimationController.forward();
+  
+  // Method to prompt user to select a static image
+  Future<void> _selectStaticImage() async {
+    try {
+      Logger.info('Opening file picker to select static image for section ${widget.sectionKey}', source: 'GameCarousel');
+      
+      // Use our StaticImageManager to handle image selection
+      final staticImageManager = StaticImageManager();
+      final path = await staticImageManager.pickStaticImage(widget.settingsProvider, widget.sectionKey);
+      
+      if (path != null) {
+        // Force a rebuild to show the new image
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      Logger.error('Error selecting static image: $e', source: 'GameCarousel');
+    }
   }
 }
 

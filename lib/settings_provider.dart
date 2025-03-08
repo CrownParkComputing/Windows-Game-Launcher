@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'models/game_config.dart';
+import 'utils/logger.dart';
 
 class SettingsProvider extends ChangeNotifier {
   static const String _gamesKey = 'games';
@@ -38,6 +39,10 @@ class SettingsProvider extends ChangeNotifier {
   static const String videoFolder = 'video';
   static const String mediumDiscFolder = 'medium_disc';
 
+  // Add media type constants for our new widgets
+  static const String staticImageWidgetType = 'static_image_widget';
+  static const String transparentWidgetType = 'transparent';
+
   // Valid media types for layout positions (including all available types)
   static const List<String> validLayoutMedia = [
     'logo',
@@ -47,7 +52,9 @@ class SettingsProvider extends ChangeNotifier {
     'video',
     'story',
     'medium_disc',
-    'static_image'
+    'static_image',
+    staticImageWidgetType,
+    transparentWidgetType,
   ];
 
   late SharedPreferences _prefs;
@@ -233,6 +240,40 @@ class SettingsProvider extends ChangeNotifier {
   // Add a map to store video aspect ratios
   final Map<String, double> _videoAspectRatios = {};
 
+  // Background image path
+  String? _backgroundImagePath;
+  String? get backgroundImagePath => _backgroundImagePath;
+  
+  // Method to set background image path
+  void setBackgroundImagePath(String? imagePath) {
+    _backgroundImagePath = imagePath;
+    
+    // Save directly to SharedPreferences for immediate persistence
+    _saveBackgroundImagePathDirectly(imagePath);
+    
+    // Force save all settings to ensure everything is persisted
+    forceSave();
+    
+    // Notify listeners
+    notifyListeners();
+  }
+  
+  // Save the background image path directly to SharedPreferences
+  Future<void> _saveBackgroundImagePathDirectly(String? imagePath) async {
+    final key = 'background_image_path';
+    if (imagePath != null) {
+      await _prefs.setString(key, imagePath);
+    } else {
+      await _prefs.remove(key);
+    }
+  }
+  
+  // Load the background image path from SharedPreferences
+  Future<void> _loadBackgroundImagePath() async {
+    final key = 'background_image_path';
+    _backgroundImagePath = _prefs.getString(key);
+  }
+
   // Method to set static image path
   void setStaticImagePath(String sectionKey, String? imagePath) {
     if (imagePath != null) {
@@ -243,6 +284,9 @@ class SettingsProvider extends ChangeNotifier {
     
     // Save directly to SharedPreferences for immediate persistence
     _saveStaticImagePathDirectly(sectionKey, imagePath);
+    
+    // Force save all settings to ensure everything is persisted
+    forceSave();
     
     // Notify listeners
     notifyListeners();
@@ -311,6 +355,36 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.remove(key);
   }
 
+  // Add a setting for enabling/disabling glass effect
+  bool _useGlassEffect = false;
+  bool get useGlassEffect => _useGlassEffect;
+
+  // Method to toggle glass effect
+  void toggleGlassEffect() {
+    _useGlassEffect = !_useGlassEffect;
+    _saveUseGlassEffectPreference();
+    notifyListeners();
+  }
+
+  // Method to set glass effect
+  void setGlassEffect(bool enabled) {
+    _useGlassEffect = enabled;
+    _saveUseGlassEffectPreference();
+    notifyListeners();
+  }
+
+  // Save glass effect preference to SharedPreferences
+  Future<void> _saveUseGlassEffectPreference() async {
+    await _prefs.setBool('use_glass_effect', _useGlassEffect);
+    Logger.debug('Saved glass effect preference: $_useGlassEffect', source: 'SettingsProvider');
+  }
+
+  // Load glass effect preference from SharedPreferences
+  void _loadUseGlassEffectPreference() {
+    _useGlassEffect = _prefs.getBool('use_glass_effect') ?? false;
+    Logger.debug('Loaded glass effect preference: $_useGlassEffect', source: 'SettingsProvider');
+  }
+
   // Constructor
   SettingsProvider() {
     _initializeSettings();
@@ -332,6 +406,9 @@ class SettingsProvider extends ChangeNotifier {
     
     // Load video aspect ratios using our enhanced loading method
     await reloadVideoAspectRatios();
+    
+    // Load background image path
+    await _loadBackgroundImagePath();
     
     // Load selected game indices
     await loadSelectedGameIndices();
@@ -421,6 +498,8 @@ class SettingsProvider extends ChangeNotifier {
         if (game.bannerPath.isNotEmpty) _gameBannerPaths[game.name] = game.bannerPath;
       }
     }
+
+    _loadUseGlassEffectPreference();
 
     notifyListeners();
   }
@@ -1093,6 +1172,7 @@ class SettingsProvider extends ChangeNotifier {
     await _saveData();
     await forceSaveStaticImagePaths();
     await forceSaveVideoAspectRatios();
+    await _saveBackgroundImagePathDirectly(_backgroundImagePath);
     debugPrint('All settings saved');
   }
 

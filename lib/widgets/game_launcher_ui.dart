@@ -4,6 +4,7 @@ import '../models/game_config.dart';
 import 'resizable_section.dart';
 import '../controllers/layout_manager.dart';
 import '../settings_provider.dart';
+import '../screens/logs_screen.dart';
 
 class GameLauncherAppBar extends StatelessWidget
     implements PreferredSizeWidget {
@@ -11,6 +12,10 @@ class GameLauncherAppBar extends StatelessWidget
   final VoidCallback onEditModeToggle;
   final VoidCallback onOpenGameManager;
   final bool isEditMode;
+  final VoidCallback onSelectBackground;
+  final bool hasBackgroundImage;
+  final bool useGlassEffect;
+  final VoidCallback onToggleGlassEffect;
 
   const GameLauncherAppBar({
     Key? key,
@@ -18,6 +23,10 @@ class GameLauncherAppBar extends StatelessWidget
     required this.onEditModeToggle,
     required this.onOpenGameManager,
     required this.isEditMode,
+    required this.onSelectBackground,
+    required this.hasBackgroundImage,
+    required this.useGlassEffect,
+    required this.onToggleGlassEffect,
   }) : super(key: key);
 
   @override
@@ -45,6 +54,32 @@ class GameLauncherAppBar extends StatelessWidget
             ),
             Row(
               children: [
+                // Glass effect toggle button
+                TextButton.icon(
+                  icon: Icon(
+                    useGlassEffect ? Icons.blur_on : Icons.blur_off,
+                    color: Colors.white,
+                  ),
+                  label: Text(
+                    useGlassEffect ? 'Glass Effect On' : 'Glass Effect Off',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onPressed: onToggleGlassEffect,
+                ),
+                
+                // Background image button
+                TextButton.icon(
+                  icon: Icon(
+                    hasBackgroundImage ? Icons.wallpaper : Icons.add_photo_alternate,
+                    color: Colors.white,
+                  ),
+                  label: Text(
+                    hasBackgroundImage ? 'Change Background' : 'Add Background',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onPressed: onSelectBackground,
+                ),
+                
                 IconButton(
                   icon: Icon(
                     isEditMode ? Icons.lock : Icons.edit,
@@ -58,6 +93,28 @@ class GameLauncherAppBar extends StatelessWidget
                   label: const Text('Manage Games',
                       style: TextStyle(color: Colors.white)),
                   onPressed: onOpenGameManager,
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  tooltip: 'More Options',
+                  onSelected: (value) {
+                    if (value == 'logs') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const LogsScreen()),
+                      );
+                    }
+                  },
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'logs',
+                      child: ListTile(
+                        leading: Icon(Icons.list_alt),
+                        title: Text('View Logs'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white),
@@ -439,8 +496,8 @@ class GameLayout extends StatelessWidget {
             height: size,
             margin: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.black38,
-              border: Border.all(color: Colors.grey[850]!),
+              color: isEditMode ? Colors.black38 : Colors.transparent,
+              border: isEditMode ? Border.all(color: Colors.grey[850]!) : null,
               borderRadius: BorderRadius.circular(4),
             ),
             child: ResizableSection(

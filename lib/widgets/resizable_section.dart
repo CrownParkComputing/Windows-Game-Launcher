@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../settings_provider.dart';
 import 'game_carousel.dart';
 import 'package:file_picker/file_picker.dart';
+import '../utils/video_manager.dart';
+import '../utils/logger.dart';
+import '../utils/static_image_manager.dart';
 
 class ResizableSection extends StatefulWidget {
   final double width;
@@ -39,6 +42,8 @@ class ResizableSection extends StatefulWidget {
 class _ResizableSectionState extends State<ResizableSection> {
   // Add a local state variable to track the current media type
   late String _currentMediaType;
+  late bool _isChangingMediaType;
+  List<String> _availableMediaFolders = [];
   
   @override
   void initState() {
@@ -46,6 +51,12 @@ class _ResizableSectionState extends State<ResizableSection> {
     
     // Initialize the local media type from the widget
     _currentMediaType = widget.mediaType;
+    
+    // Initialize loading state
+    _isChangingMediaType = false;
+    
+    // Load available media folders
+    _loadAvailableMediaFolders();
     
     // Make sure this section has all needed settings initialized
     _ensureSectionConsistency();
@@ -65,9 +76,43 @@ class _ResizableSectionState extends State<ResizableSection> {
     }
   }
 
+  // Load available media folders from medium_artwork directory
+  void _loadAvailableMediaFolders() {
+    try {
+      final baseDir = Directory('${Directory.current.path}/medium_artwork');
+      
+      // Create the base directory if it doesn't exist
+      if (!baseDir.existsSync()) {
+        baseDir.createSync(recursive: true);
+        Logger.info('Created base medium_artwork directory', source: 'ResizableSection');
+      }
+      
+      if (baseDir.existsSync()) {
+        // Get only actual directories from the medium_artwork folder
+        final dirs = baseDir.listSync()
+          .where((entity) => entity is Directory)
+          .map((dir) => dir.path.split(Platform.pathSeparator).last)
+          .toList();
+        
+        setState(() {
+          _availableMediaFolders = dirs;
+          Logger.debug('Available media folders: $_availableMediaFolders', source: 'ResizableSection');
+        });
+      } else {
+        Logger.warning('Medium artwork directory not found at ${baseDir.path}', source: 'ResizableSection');
+      }
+    } catch (e) {
+      Logger.error('Error loading media folders: $e', source: 'ResizableSection');
+      // Fallback to default media types
+      setState(() {
+        _availableMediaFolders = SettingsProvider.validLayoutMedia;
+      });
+    }
+  }
+
   // This method ensures all section settings are consistent and correctly initialized
   void _ensureSectionConsistency() {
-    debugPrint('Ensuring consistency for section: ${widget.sectionKey}');
+    Logger.debug('Ensuring consistency for section: ${widget.sectionKey}', source: 'ResizableSection');
     
     // 1. Make sure carousel mode is initialized for this section
     if (widget.settingsProvider.isCarouselMap[widget.sectionKey] == null) {
@@ -75,7 +120,7 @@ class _ResizableSectionState extends State<ResizableSection> {
       final Map<String, bool> updatedMap = Map.from(widget.settingsProvider.isCarouselMap);
       updatedMap[widget.sectionKey] = true;
       widget.settingsProvider.saveLayoutPreferences(isCarouselMap: updatedMap);
-      debugPrint('Initialized carousel mode for ${widget.sectionKey} to true');
+      Logger.debug('Initialized carousel mode for ${widget.sectionKey} to true', source: 'ResizableSection');
     }
     
     // 2. Make sure carousel item count is set
@@ -83,65 +128,48 @@ class _ResizableSectionState extends State<ResizableSection> {
       final Map<String, int> updatedMap = Map.from(widget.settingsProvider.carouselItemCount);
       updatedMap[widget.sectionKey] = SettingsProvider.defaultCarouselItemCount;
       widget.settingsProvider.saveLayoutPreferences(carouselItemCount: updatedMap);
-      debugPrint('Initialized carousel item count for ${widget.sectionKey} to ${SettingsProvider.defaultCarouselItemCount}');
+      Logger.debug('Initialized carousel item count for ${widget.sectionKey} to ${SettingsProvider.defaultCarouselItemCount}', source: 'ResizableSection');
     }
     
     // 3. Get and validate the current media type for this section
     final String effectiveMediaType = _getSectionMediaType();
-    debugPrint('Current media type from provider: $effectiveMediaType');
+    Logger.debug('Current media type from provider: $effectiveMediaType', source: 'ResizableSection');
     
     // 4. Make sure the local state matches the provider
     if (_currentMediaType != effectiveMediaType) {
-      debugPrint('Correcting local media type in ${widget.sectionKey} from $_currentMediaType to $effectiveMediaType');
+      Logger.debug('Correcting local media type in ${widget.sectionKey} from $_currentMediaType to $effectiveMediaType', source: 'ResizableSection');
       setState(() {
         _currentMediaType = effectiveMediaType;
       });
     }
     
-    // 5. Ensure media type is valid
-    if (!SettingsProvider.validLayoutMedia.contains(_currentMediaType) && _currentMediaType != 'static_image') {
-      debugPrint('WARNING: Invalid media type ${_currentMediaType}, resetting to default logo');
-      _updateSectionMediaType('logo');
+    // 5. Ensure media type is valid by checking if it exists in available folders or standard types
+    if (!_availableMediaFolders.contains(_currentMediaType) && 
+        !SettingsProvider.validLayoutMedia.contains(_currentMediaType)) {
+      // Set to logo or first available folder
+      final String newType = _availableMediaFolders.contains('logo') ? 
+          'logo' : (_availableMediaFolders.isNotEmpty ? _availableMediaFolders.first : 'logo');
+          
+      Logger.warning('Invalid media type ${_currentMediaType}, resetting to $newType', source: 'ResizableSection');
+      _updateSectionMediaType(newType);
     }
     
-    // 6. For static_image, validate path exists but don't change media type
-    if (_currentMediaType == 'static_image') {
-      final String? staticImagePath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-      debugPrint('Static image path: $staticImagePath');
-      
-      if (staticImagePath != null && staticImagePath.isNotEmpty) {
-        // Check if the file exists
-        final file = File(staticImagePath);
-        final bool exists = file.existsSync();
-        debugPrint('Static image exists: $exists');
-        
-        if (!exists) {
-          // Log the issue but don't change automatically
-          debugPrint('WARNING: Static image does not exist: $staticImagePath');
-        }
-      } else {
-        debugPrint('WARNING: Static image path is null or empty for section ${widget.sectionKey}');
-        // If the user explicitly selected static_image but there's no path, we should not
-        // automatically reset it - they may want to add an image later
-      }
-    }
+    // 6. Debug log current settings
+    Logger.debug('Section ${widget.sectionKey} settings:', source: 'ResizableSection');
+    Logger.debug('- Media type: $_currentMediaType', source: 'ResizableSection');
+    Logger.debug('- Carousel mode: ${widget.settingsProvider.isCarouselMap[widget.sectionKey]}', source: 'ResizableSection');
+    Logger.debug('- Item count: ${widget.settingsProvider.carouselItemCount[widget.sectionKey]}', source: 'ResizableSection');
     
-    // 7. Debug log current settings
-    debugPrint('Section ${widget.sectionKey} settings:');
-    debugPrint('- Media type: $_currentMediaType');
-    debugPrint('- Carousel mode: ${widget.settingsProvider.isCarouselMap[widget.sectionKey]}');
-    debugPrint('- Item count: ${widget.settingsProvider.carouselItemCount[widget.sectionKey]}');
-    
-    // 8. Force save to ensure all settings are persisted
+    // 7. Force save to ensure all settings are persisted
     widget.settingsProvider.forceSave();
-    debugPrint('Forcing save of all settings');
+    Logger.debug('Forcing save of all settings', source: 'ResizableSection');
     
-    // 9. Delay a tiny bit and force a rebuild to ensure UI reflects the latest settings
+    // 8. Delay a tiny bit and force a rebuild to ensure UI reflects the latest settings
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) {
         setState(() {
           // This will force the section to rebuild with correct settings
-          debugPrint('Forcing final consistency rebuild for section ${widget.sectionKey}');
+          Logger.debug('Forcing final consistency rebuild for section ${widget.sectionKey}', source: 'ResizableSection');
         });
       }
     });
@@ -155,12 +183,11 @@ class _ResizableSectionState extends State<ResizableSection> {
     // If the media type hasn't changed, don't do anything
     if (_currentMediaType == mediaType) return;
     
-    debugPrint('Changing media type in section ${widget.sectionKey} from $_currentMediaType to $mediaType');
+    Logger.info('_updateSectionMediaType: changing from $_currentMediaType to $mediaType for ${widget.sectionKey}', source: 'ResizableSection');
     
-    // If switching FROM static_image TO another type, clear the static image path
-    if (_currentMediaType == 'static_image' && mediaType != 'static_image') {
-      debugPrint('Clearing static image path for ${widget.sectionKey} since switching to non-static media type');
-      widget.settingsProvider.clearStaticImagePath(widget.sectionKey);
+    // Add specific logging for transparent widget
+    if (mediaType == SettingsProvider.transparentWidgetType) {
+      Logger.info('Attempting to set transparent widget for ${widget.sectionKey}', source: 'ResizableSection');
     }
     
     // Update the local state variable
@@ -203,7 +230,7 @@ class _ResizableSectionState extends State<ResizableSection> {
         widget.settingsProvider.saveLayoutPreferences(selectedTopRightImage: mediaType);
         break;
       default:
-        debugPrint('WARNING: Unknown section key ${widget.sectionKey} - media type change may not persist!');
+        Logger.warning('Unknown section key ${widget.sectionKey} - media type change may not persist!', source: 'ResizableSection');
         break;
     }
     
@@ -211,15 +238,25 @@ class _ResizableSectionState extends State<ResizableSection> {
     widget.settingsProvider.forceSave();
     
     // Log the current state after the change
-    debugPrint('After update: Section ${widget.sectionKey} media type is now ${_currentMediaType}');
-    debugPrint('Settings provider value for ${widget.sectionKey}: ${_getSectionMediaType()}');
+    Logger.debug('After update: Section ${widget.sectionKey} media type is now ${_currentMediaType}', source: 'ResizableSection');
+    Logger.debug('Settings provider value for ${widget.sectionKey}: ${_getSectionMediaType()}', source: 'ResizableSection');
+    
+    // Add explicit verification for transparent widget
+    if (mediaType == SettingsProvider.transparentWidgetType) {
+      final String savedType = _getSectionMediaType();
+      if (savedType != SettingsProvider.transparentWidgetType) {
+        Logger.error('Failed to save transparent widget type! Saved as: $savedType', source: 'ResizableSection');
+      } else {
+        Logger.info('Successfully saved transparent widget type', source: 'ResizableSection');
+      }
+    }
     
     // Force a more substantial rebuild after a short delay to ensure all UI updates
     Future.delayed(const Duration(milliseconds: 250), () {
       if (mounted) {
         setState(() {
           // Force a rebuild with the new media type
-          debugPrint('Forcing full rebuild of section ${widget.sectionKey} with media type $mediaType');
+          Logger.debug('Forcing full rebuild of section ${widget.sectionKey} with media type $mediaType', source: 'ResizableSection');
         });
       }
     });
@@ -231,13 +268,15 @@ class _ResizableSectionState extends State<ResizableSection> {
       width: widget.width > 0 ? widget.width : 0,
       height: widget.height > 0 ? widget.height : 0,
       decoration: BoxDecoration(
-        color: Colors.black38,
-        border: Border(
+        // Make container fully transparent when not in edit mode
+        color: widget.isEditMode ? Colors.black38 : Colors.transparent,
+        // Show borders only in edit mode
+        border: widget.isEditMode ? Border(
           left: BorderSide(color: Colors.grey[850]!, width: 1),
           right: BorderSide(color: Colors.grey[850]!, width: 1),
           top: BorderSide(color: Colors.grey[850]!, width: 1),
           bottom: BorderSide(color: Colors.grey[850]!, width: 1),
-        ),
+        ) : null,
       ),
       child: Stack(
         children: [
@@ -278,45 +317,44 @@ class _ResizableSectionState extends State<ResizableSection> {
   }
 
   Widget _buildGameContent() {
-    final selectedGameIndex = widget.settingsProvider.getSelectedGameIndex(widget.sectionKey);
+    // Build a unique key string that changes whenever relevant properties change
+    final keyString = '${widget.sectionKey}_${_currentMediaType}_${widget.isEditMode}_${widget.selectedGameIndex}';
+    
+    // Get the carousel mode setting for this section (default to widget value if not set)
     final isCarousel = widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? true;
-    final alignment = widget.settingsProvider.getAlignmentForSection(widget.sectionKey);
-    final backgroundColor = widget.settingsProvider.getBackgroundColorForSection(widget.sectionKey);
     
-    // Create a unique key that incorporates ALL factors that should trigger a rebuild:
-    // 1. The section identifier
-    // 2. The current media type - crucial for widget type changes!
-    // 3. Static image path (if applicable)
-    // 4. Whether it's in carousel mode
-    // 5. The selected game index
-    // 6. A unique timestamp to ensure complete rebuild when needed
+    // Calculate the alignment based on section position
+    final alignment = _getAlignment();
     
-    // Start with section and media type - most critical for widget type changes
-    String keyString = 'carousel_${widget.sectionKey}_${_currentMediaType}';
+    // Calculate the background color - make transparent except in edit mode
+    final backgroundColor = widget.isEditMode 
+      ? _getEditModeColor() 
+      : Colors.transparent;
     
-    // Add additional elements to the key
-    if (_currentMediaType == 'static_image') {
-      // For static images, include the path in the key
-      final String? path = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-      if (path != null && path.isNotEmpty) {
-        // Use just the filename to keep key manageable
-        final filename = path.split(Platform.pathSeparator).last;
-        keyString += '_$filename';
-      } else {
-        keyString += '_nopath';
-      }
+    // Get the selected game index for this section specifically
+    final selectedGameIndex = widget.settingsProvider.getSelectedGameIndex(widget.sectionKey);
+    
+    Logger.debug('Building game content with key: $keyString', source: 'ResizableSection');
+    
+    // Show loading indicator when changing media types
+    if (_isChangingMediaType) {
+      return Container(
+        color: backgroundColor,
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Changing media type...',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
     }
-    
-    // Add selected game index to ensure selection changes trigger rebuilds
-    keyString += '_$selectedGameIndex';
-    
-    // Add carousel mode state - crucial for layout changes
-    keyString += '_${isCarousel ? 'carousel' : 'static'}';
-    
-    // Add current time to force rebuilds when needed
-    keyString += '_${DateTime.now().millisecondsSinceEpoch}';
-    
-    debugPrint('Building game content with key: $keyString');
     
     return GameCarousel(
       key: ValueKey(keyString),
@@ -330,7 +368,7 @@ class _ResizableSectionState extends State<ResizableSection> {
       selectedIndex: selectedGameIndex,
       onGameSelected: (index) {
         // Update the selected game index and call the parent's handler if it exists
-        debugPrint('ResizableSection received game selection: section=${widget.sectionKey}, index=$index');
+        Logger.debug('ResizableSection received game selection: section=${widget.sectionKey}, index=$index', source: 'ResizableSection');
         
         // Update ALL sections with the new selection to keep them in sync
         widget.settingsProvider.setSelectedGameIndex('top_left', index);
@@ -342,13 +380,13 @@ class _ResizableSectionState extends State<ResizableSection> {
         widget.settingsProvider.setSelectedGameIndex('main', index);
         
         if (widget.onGameSelected != null) {
-          debugPrint('Calling parent onGameSelected with index=$index');
+          Logger.debug('Calling parent onGameSelected with index=$index', source: 'ResizableSection');
           widget.onGameSelected!(index);
         }
         
         // Force a rebuild to ensure the UI updates
         setState(() {
-          debugPrint('Forcing ResizableSection rebuild for section ${widget.sectionKey}');
+          Logger.debug('Forcing ResizableSection rebuild for section ${widget.sectionKey}', source: 'ResizableSection');
         });
       },
       isEditMode: widget.isEditMode,
@@ -616,6 +654,19 @@ class _ResizableSectionState extends State<ResizableSection> {
   }
 
   Widget _buildEditModeControls() {
+    // Load standard media types if no folders were found
+    final List<String> mediaOptions = _availableMediaFolders.isEmpty 
+        ? SettingsProvider.validLayoutMedia 
+        : _availableMediaFolders;
+        
+    // Make sure our special widget types are included in the options
+    if (!mediaOptions.contains(SettingsProvider.staticImageWidgetType)) {
+      mediaOptions.add(SettingsProvider.staticImageWidgetType);
+    }
+    if (!mediaOptions.contains(SettingsProvider.transparentWidgetType)) {
+      mediaOptions.add(SettingsProvider.transparentWidgetType);
+    }
+        
     return Positioned(
       top: 5,
       right: 5,
@@ -631,42 +682,27 @@ class _ResizableSectionState extends State<ResizableSection> {
           children: [
             // Media type selector
             DropdownButton<String>(
-              value: _currentMediaType, // Use the local state variable instead of widget.mediaType
+              value: _currentMediaType.isNotEmpty && mediaOptions.contains(_currentMediaType) 
+                  ? _currentMediaType 
+                  : mediaOptions.isNotEmpty ? mediaOptions.first : 'logo',
               dropdownColor: Colors.black87,
               isDense: true,
               underline: const SizedBox(),
               items: [
-                ...SettingsProvider.validLayoutMedia.map((type) => DropdownMenuItem(
+                ...mediaOptions.map((type) => DropdownMenuItem(
                       value: type,
                       child: Text(
-                        type.replaceAll('_', ' ').toUpperCase(),
+                        _getDisplayNameForMediaType(type),
                         style: const TextStyle(color: Colors.white, fontSize: 12),
                       ),
                     )),
               ],
               onChanged: (value) async {
                 if (value != null) {
-                  debugPrint('Dropdown selection changed to: $value for section ${widget.sectionKey}');
+                  Logger.debug('Dropdown selection changed to: $value for section ${widget.sectionKey}', source: 'ResizableSection');
                   
-                  // Special handling for static_image which requires a file path
-                  if (value == 'static_image') {
-                    final imagePath = await _promptForImagePath(context);
-                    if (imagePath == null) {
-                      // If the user cancels the file picker, revert to the previous media type
-                      debugPrint('File picker cancelled, reverting to ${_currentMediaType}');
-                      setState(() {
-                        // No change, keep current media type
-                      });
-                      return;
-                    }
-                    // _promptForImagePath handles saving the path and setting the media type
-                  } else {
-                    // For all other media types, explicitly update the type
-                    debugPrint('Updating section media type to $value');
-                    
-                    // Use our wrapper method which ensures everything is properly updated
-                    _changeMediaType(value);
-                  }
+                  // Use our wrapper method which ensures everything is properly updated
+                  _changeMediaType(value);
                   
                   // Force another save and UI update after a short delay
                   Future.delayed(const Duration(milliseconds: 100), () {
@@ -674,7 +710,7 @@ class _ResizableSectionState extends State<ResizableSection> {
                     
                     if (mounted) {
                       setState(() {
-                        debugPrint('Forcing final UI update after media type change to $value');
+                        Logger.debug('Forcing final UI update after media type change to $value', source: 'ResizableSection');
                       });
                     }
                   });
@@ -685,8 +721,10 @@ class _ResizableSectionState extends State<ResizableSection> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Don't show carousel toggle for video type
-                if (widget.mediaType != 'video')
+                // Don't show carousel toggle for video type or our special widget types
+                if (widget.mediaType != 'video' && 
+                    widget.mediaType != SettingsProvider.staticImageWidgetType &&
+                    widget.mediaType != SettingsProvider.transparentWidgetType)
                   IconButton(
                     icon: Icon(
                       (widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? true)
@@ -842,102 +880,6 @@ class _ResizableSectionState extends State<ResizableSection> {
     );
   }
 
-  Future<String?> _promptForImagePath(BuildContext context) async {
-    try {
-      debugPrint('Opening file picker for static image selection in section ${widget.sectionKey}');
-      
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-      );
-      
-      if (result != null && result.files.isNotEmpty) {
-        final String? path = result.files.first.path;
-        
-        if (path != null && path.isNotEmpty) {
-          // Validate that the file exists
-          final file = File(path);
-          final bool exists = file.existsSync();
-          
-          if (exists) {
-            debugPrint('Selected valid static image path: $path for section ${widget.sectionKey}');
-            
-            // First set the media type to static_image
-            _updateSectionMediaType('static_image');
-            
-            // Then save the path
-            widget.settingsProvider.setStaticImagePath(widget.sectionKey, path);
-            debugPrint('Saved static image path for ${widget.sectionKey}: $path');
-            
-            // Force an immediate save
-            widget.settingsProvider.forceSave();
-            
-            // Force a complete rebuild after a short delay
-            Future.delayed(const Duration(milliseconds: 300), () {
-              if (mounted) {
-                setState(() {
-                  debugPrint('Completed static image setup for section ${widget.sectionKey}');
-                  // Verify the current media type is static_image
-                  if (_currentMediaType != 'static_image') {
-                    debugPrint('WARNING: Media type not correctly set to static_image after selecting image');
-                    _currentMediaType = 'static_image';
-                  }
-                });
-              }
-            });
-            
-            return path;
-          } else {
-            debugPrint('Selected file does not exist: $path');
-            
-            // Show error dialog
-            if (mounted) {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Invalid Image'),
-                  content: const Text('The selected image file does not exist.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            
-            return null;
-          }
-        }
-      }
-      
-      debugPrint('No image selected or selection cancelled');
-      return null;
-    } catch (e) {
-      debugPrint('Error selecting image: $e');
-      
-      // Show error dialog
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Error'),
-            content: Text('Failed to select image: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-      
-      return null;
-    }
-  }
-
   // Helper method to get the current media type for this section
   String _getSectionMediaType() {
     String mediaType;
@@ -971,11 +913,15 @@ class _ResizableSectionState extends State<ResizableSection> {
         mediaType = 'logo';
     }
     
-    // DON'T automatically switch back to static_image mode just because a path exists
-    // This was causing issues with being unable to switch away from static_image
+    // Special validation for our widget types
+    if (mediaType == SettingsProvider.transparentWidgetType || 
+        mediaType == SettingsProvider.staticImageWidgetType) {
+      // These types are valid and should be returned as-is
+      Logger.debug('Special widget type found: $mediaType for ${widget.sectionKey}', source: 'ResizableSection');
+    }
     
     // Log the media type being returned
-    debugPrint('_getSectionMediaType for ${widget.sectionKey} returning: $mediaType');
+    Logger.debug('_getSectionMediaType for ${widget.sectionKey} returning: $mediaType', source: 'ResizableSection');
     
     return mediaType;
   }
@@ -985,59 +931,50 @@ class _ResizableSectionState extends State<ResizableSection> {
     // Skip if widget is unmounted
     if (!mounted) return;
     
-    debugPrint('MediaContent update triggered for section ${widget.sectionKey}');
+    Logger.debug('MediaContent update triggered for section ${widget.sectionKey}', source: 'ResizableSection');
     
     try {
       // Get the current media type from settings provider
       final newMediaType = _getSectionMediaType();
       
+      // Handle invalid media types by resetting to a valid option
+      if (!_availableMediaFolders.contains(newMediaType) && 
+          !SettingsProvider.validLayoutMedia.contains(newMediaType)) {
+        // Set to logo or first available folder
+        final String resetType = _availableMediaFolders.contains('logo') ? 
+            'logo' : (_availableMediaFolders.isNotEmpty ? _availableMediaFolders.first : 'logo');
+            
+        Logger.warning('Auto-correcting invalid media type $newMediaType to $resetType in ${widget.sectionKey}', source: 'ResizableSection');
+        _updateSectionMediaType(resetType);
+        return; // Return early since we're handling this in _updateSectionMediaType
+      }
+      
       // If media type changed, update the state
       if (newMediaType != _currentMediaType) {
-        debugPrint('Media type changed externally in ${widget.sectionKey} from $_currentMediaType to $newMediaType');
-        
-        // If changing FROM static_image TO another type, clear the static image path
-        if (_currentMediaType == 'static_image' && newMediaType != 'static_image') {
-          debugPrint('Clearing static image path during media content update since type changed');
-          widget.settingsProvider.clearStaticImagePath(widget.sectionKey);
-        }
-        
+        Logger.debug('Media type changed externally in ${widget.sectionKey} from $_currentMediaType to $newMediaType', source: 'ResizableSection');
         setState(() {
           _currentMediaType = newMediaType;
         });
       }
       
-      // Check if static image path changed (for static image sections)
-      if (_currentMediaType == 'static_image') {
-        final path = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
-        debugPrint('Current static image path for ${widget.sectionKey}: $path');
-        
-        // Validate the path exists
-        if (path == null || path.isEmpty || !File(path).existsSync()) {
-          debugPrint('Static image path invalid, might need to reset media type');
-        }
-        
-        // Rebuild anyway to ensure the image is updated
-        setState(() {});
-      }
-      
       // Check if the selected game index has changed
       final currentSelectedIndex = widget.settingsProvider.getSelectedGameIndex(widget.sectionKey);
       if (currentSelectedIndex != widget.selectedGameIndex) {
-        debugPrint('Selected game index changed in ${widget.sectionKey} from ${widget.selectedGameIndex} to $currentSelectedIndex');
+        Logger.debug('Selected game index changed in ${widget.sectionKey} from ${widget.selectedGameIndex} to $currentSelectedIndex', source: 'ResizableSection');
         // Force a rebuild to show the new selection
         setState(() {});
       }
       
       // Check if carousel mode changed
       final isCarousel = widget.settingsProvider.isCarouselMap[widget.sectionKey] ?? true;
-      debugPrint('Carousel mode for ${widget.sectionKey}: $isCarousel');
+      Logger.debug('Carousel mode for ${widget.sectionKey}: $isCarousel', source: 'ResizableSection');
       
       // Force update regardless to ensure all sections stay in sync
       setState(() {
-        debugPrint('Forcing update in section ${widget.sectionKey} to ensure synchronization');
+        Logger.debug('Forcing update in section ${widget.sectionKey} to ensure synchronization', source: 'ResizableSection');
       });
     } catch (e) {
-      debugPrint('Error in _updateMediaContent for ${widget.sectionKey}: $e');
+      Logger.error('Error in _updateMediaContent for ${widget.sectionKey}: $e', source: 'ResizableSection');
     }
   }
   
@@ -1049,15 +986,23 @@ class _ResizableSectionState extends State<ResizableSection> {
   }
 
   // Helper method to safely change the media type, ensuring all paths and settings are properly updated
-  void _changeMediaType(String newMediaType) {
+  void _changeMediaType(String newMediaType) async {
     if (_currentMediaType == newMediaType) return;
     
-    debugPrint('_changeMediaType: changing from ${_currentMediaType} to $newMediaType for ${widget.sectionKey}');
+    Logger.info('_changeMediaType: changing from ${_currentMediaType} to $newMediaType for ${widget.sectionKey}', source: 'ResizableSection');
     
-    // If we're switching FROM static_image TO something else, clear the path
-    if (_currentMediaType == 'static_image' && newMediaType != 'static_image') {
-      debugPrint('Clearing static image path because we\'re switching away from static_image');
-      widget.settingsProvider.clearStaticImagePath(widget.sectionKey);
+    // Set a loading state to show user feedback
+    setState(() {
+      _isChangingMediaType = true;
+    });
+    
+    // Delay the actual change to allow UI to refresh with loading indicator
+    await Future.delayed(const Duration(milliseconds: 50));
+    
+    // Use compute to offload resource cleanup to another thread if coming from video
+    if (_currentMediaType == 'video') {
+      // Cleanup video resources before switching
+      await _cleanupVideoResources();
     }
     
     // Update the local state variable
@@ -1070,58 +1015,188 @@ class _ResizableSectionState extends State<ResizableSection> {
     
     // Double-check that the media type was actually updated in the SettingsProvider
     final verifiedMediaType = _getSectionMediaType();
-    debugPrint('After _updateSectionMediaType: Provider reports media type for ${widget.sectionKey} is: $verifiedMediaType');
+    Logger.debug('After _updateSectionMediaType: Provider reports media type for ${widget.sectionKey} is: $verifiedMediaType', source: 'ResizableSection');
     
-    if (verifiedMediaType != newMediaType) {
-      debugPrint('WARNING: Media type was not updated correctly! Trying with additional save...');
-      
-      // Try another save with specific parameters
-      switch (widget.sectionKey) {
-        case 'left':
-          widget.settingsProvider.saveLayoutPreferences(selectedLeftImage: newMediaType);
-          break;
-        case 'right':
-          widget.settingsProvider.saveLayoutPreferences(selectedRightImage: newMediaType);
-          break;
-        case 'top':
-          widget.settingsProvider.saveLayoutPreferences(selectedTopImage: newMediaType);
-          break;
-        case 'bottom':
-          widget.settingsProvider.saveLayoutPreferences(selectedBottomImage: newMediaType);
-          break;
-        case 'main':
-          widget.settingsProvider.saveLayoutPreferences(selectedMainImage: newMediaType);
-          break;
-        case 'top_left':
-          widget.settingsProvider.saveLayoutPreferences(selectedTopLeftImage: newMediaType);
-          break;
-        case 'top_center':
-          widget.settingsProvider.saveLayoutPreferences(selectedTopCenterImage: newMediaType);
-          break;
-        case 'top_right':
-          widget.settingsProvider.saveLayoutPreferences(selectedTopRightImage: newMediaType);
-          break;
+    // Special handling for static_image - prompt user to select an image immediately
+    if (newMediaType == 'static_image') {
+      // If there's already a static image path, we don't need to prompt
+      final existingPath = widget.settingsProvider.getStaticImagePath(widget.sectionKey);
+      if (existingPath == null || existingPath.isEmpty) {
+        Logger.info('New static_image section selected, will prompt for image selection', source: 'ResizableSection');
+        // Use our StaticImageManager to prompt for image selection
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final staticImageManager = StaticImageManager();
+          await staticImageManager.pickStaticImage(widget.settingsProvider, widget.sectionKey);
+          
+          // Force a rebuild to show the new image
+          if (mounted) {
+            setState(() {});
+          }
+        });
+      } else {
+        Logger.info('Static image already selected: $existingPath', source: 'ResizableSection');
       }
-      
-      // Force an immediate save
-      widget.settingsProvider.forceSave();
-      
-      // Verify again
-      final secondVerification = _getSectionMediaType();
-      debugPrint('After additional save: Provider reports media type for ${widget.sectionKey} is: $secondVerification');
     }
     
-    // Force a UI rebuild after a short delay
-    Future.microtask(() {
+    // Special handling for transparent widget type
+    if (newMediaType == SettingsProvider.transparentWidgetType) {
+      Logger.info('Setting transparent widget for ${widget.sectionKey}', source: 'ResizableSection');
+      
+      // No special action needed, just make sure it's correctly saved
+      if (_getSectionMediaType() != SettingsProvider.transparentWidgetType) {
+        Logger.warning('Transparent widget type not saved properly! Attempting to save again...', source: 'ResizableSection');
+        
+        // Try saving it again directly
+        switch (widget.sectionKey) {
+          case 'left':
+            widget.settingsProvider.saveLayoutPreferences(selectedLeftImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'right':
+            widget.settingsProvider.saveLayoutPreferences(selectedRightImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'top':
+            widget.settingsProvider.saveLayoutPreferences(selectedTopImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'bottom':
+            widget.settingsProvider.saveLayoutPreferences(selectedBottomImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'main':
+            widget.settingsProvider.saveLayoutPreferences(selectedMainImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'top_left':
+            widget.settingsProvider.saveLayoutPreferences(selectedTopLeftImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'top_center':
+            widget.settingsProvider.saveLayoutPreferences(selectedTopCenterImage: SettingsProvider.transparentWidgetType);
+            break;
+          case 'top_right':
+            widget.settingsProvider.saveLayoutPreferences(selectedTopRightImage: SettingsProvider.transparentWidgetType);
+            break;
+        }
+        widget.settingsProvider.forceSave();
+      }
+    }
+    
+    // If switching TO video, initialize video slowly
+    if (newMediaType == 'video') {
+      // Prepare video resources in the background
+      _prepareVideoResources();
+    }
+    
+    // Clear loading state
+    setState(() {
+      _isChangingMediaType = false;
+    });
+    
+    // Force another save and UI update after a short delay
+    Future.delayed(const Duration(milliseconds: 100), () {
+      widget.settingsProvider.forceSave();
+      
       if (mounted) {
         setState(() {
-          debugPrint('_changeMediaType complete - new media type: ${_currentMediaType}');
-          
-          // Final verification
-          final finalMediaType = _getSectionMediaType();
-          debugPrint('Final verification - media type in provider for ${widget.sectionKey}: $finalMediaType');
+          Logger.debug('Forcing final UI update after media type change to $newMediaType', source: 'ResizableSection');
         });
       }
     });
+  }
+  
+  // Helper method to clean up video resources
+  Future<void> _cleanupVideoResources() async {
+    try {
+      // Get VideoManager instance
+      final videoManager = VideoManager();
+      
+      // Stop and release the player for this section
+      String playerKey = 'section_${widget.sectionKey}';
+      await videoManager.stopPlayer(playerKey);
+      
+      Logger.debug('Video resources cleaned up for ${widget.sectionKey}', source: 'ResizableSection');
+    } catch (e) {
+      Logger.error('Error cleaning up video resources: $e', source: 'ResizableSection');
+    }
+  }
+  
+  // Helper method to prepare video resources in the background
+  Future<void> _prepareVideoResources() async {
+    try {
+      // Do this in the background to avoid UI freezing
+      Future.delayed(const Duration(milliseconds: 100), () async {
+        // Get VideoManager instance
+        final videoManager = VideoManager();
+        
+        // Initialize player in advance
+        String playerKey = 'section_${widget.sectionKey}';
+        await videoManager.getPlayerAsync(playerKey);
+        
+        Logger.debug('Video resources prepared for ${widget.sectionKey}', source: 'ResizableSection');
+      });
+    } catch (e) {
+      Logger.error('Error preparing video resources: $e', source: 'ResizableSection');
+    }
+  }
+
+  // Helper method to get alignment based on section position
+  Alignment _getAlignment() {
+    // Use alignment from settings if available
+    if (widget.settingsProvider.alignmentMap.containsKey(widget.sectionKey)) {
+      return widget.settingsProvider.alignmentMap[widget.sectionKey]!;
+    }
+    
+    // Default alignments based on section position
+    switch (widget.sectionKey) {
+      case 'left':
+        return Alignment.centerLeft;
+      case 'right':
+        return Alignment.centerRight;
+      case 'top':
+        return Alignment.topCenter;
+      case 'bottom':
+        return Alignment.bottomCenter;
+      case 'top_left':
+        return Alignment.topLeft;
+      case 'top_center':
+        return Alignment.topCenter;
+      case 'top_right':
+        return Alignment.topRight;
+      default:
+        return Alignment.center;
+    }
+  }
+  
+  // Helper method to get edit mode color
+  Color _getEditModeColor() {
+    // Different colors for different sections in edit mode
+    switch (widget.sectionKey) {
+      case 'left':
+        return Colors.blue.withOpacity(0.3);
+      case 'right':
+        return Colors.red.withOpacity(0.3);
+      case 'top':
+        return Colors.green.withOpacity(0.3);
+      case 'bottom':
+        return Colors.orange.withOpacity(0.3);
+      case 'main':
+        return Colors.purple.withOpacity(0.3);
+      case 'top_left':
+        return Colors.teal.withOpacity(0.3);
+      case 'top_center':
+        return Colors.amber.withOpacity(0.3);
+      case 'top_right':
+        return Colors.cyan.withOpacity(0.3);
+      default:
+        return Colors.grey.withOpacity(0.3);
+    }
+  }
+
+  // Helper method to get user-friendly display names for media types
+  String _getDisplayNameForMediaType(String mediaType) {
+    switch (mediaType) {
+      case 'static_image_widget':
+        return 'STATIC IMAGE WIDGET';
+      case 'transparent':
+        return 'TRANSPARENT';
+      default:
+        return mediaType.replaceAll('_', ' ').toUpperCase();
+    }
   }
 }
